@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "mysql", "sqlite", etc.
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  @@map("role")
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
+  password     String?      // Null for Google auth users
+  firstName    String?      @map("first_name")
+  lastName     String?      @map("last_name")
+  avatar       String?      
+  role         Role         @default(USER)
+  isVerified   Boolean      @default(false) @map("is_verified")
+  googleId     String?      @unique @map("google_id") 
+  lastLogin    DateTime?    @map("last_login")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  // JWT Token fields
+  refreshToken   String?   @unique @map("refresh_token")
+
+  // Email verification fields
+  emailVerificationToken      String?   @unique @map("email_verification_token")
+  emailVerificationExpiry     DateTime? @map("email_verification_expiry")
+  
+  // Password reset fields
+  passwordResetToken          String?   @unique @map("password_reset_token")
+  passwordResetTokenExpiry    DateTime? @map("password_reset_token_expiry")
+
+  // Relations
+  profile            Profile?
+  products           Product[]
+  orderRequests      OrderRequest[]
+  payments           Payment[]
+  referralsMade      Referral[]     @relation("ReferrerRelation")
+  referralsReceived  Referral[]     @relation("RefereeRelation")
+  referredUsers      Profile[]      @relation("ReferredByRelation")
+  paymentsAsReferrer Payment[]      @relation("ReferrerPayments")
+
+  @@index([email])
+  @@index([googleId])
+  @@index([role])
+  @@index([refreshToken])
+  @@map("users")
+}
+
+enum BankAccount {
+  EASYPAISA
+  JAZZCASH
+  BANK_ACCOUNT
+  OTHER
+  @@map("bank_account")
+}
+
+model Profile {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique @map("user_id")
+  fullName        String?  @map("full_name")
+  address         String?
+  whatsappNumber  String?  @map("whatsapp_number")
+  bankAccount     BankAccount? @map("bank_account")
+  facebookLink    String?  @map("facebook_link")
+  dubizzleLink    String?  @map("dubizzle_link")
+  verified        Boolean  @default(false)
+  referralCode    String   @unique @map("referral_code")
+  referredBy      Int?     @map("referred_by")
+  listedProducts  String[] @default([]) @map("listed_products")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrer User? @relation("ReferredByRelation", fields: [referredBy], references: [id], onDelete: SetNull)
+
+  @@index([referralCode])
+  @@index([verified])
+  @@index([referredBy])
+  @@map("profiles")
+}
+
+model Referral {
+  id         Int      @id @default(autoincrement())
+  referrerId Int      @map("referrer_id")
+  refereeId  Int      @map("referee_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  referrer User @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User @relation("RefereeRelation", fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, refereeId])
+  @@index([referrerId])
+  @@index([refereeId])
+  @@map("referrals")
+}
+
+model Product {
+  id          Int              @id @default(autoincrement())
+  ownerId     Int              @map("owner_id")
+  title       String
+  description String?
+  price       Decimal          @db.Decimal(10, 2)
+  category    ProductCategory
+  condition   ProductCondition
+  photos      String[]         @default([])
+  brand       String?
+  colors      String[]         @default([])
+  location    String?          
+  material    String?
+  productTags String[]         @default([]) @map("product_tags")
+  quantity    Int              @default(1)
+  sku         String?          @unique
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  orderRequests OrderRequest[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([condition])
+  @@index([title])
+  @@index([price])
+  @@map("products")
+}
+
+model OrderRequest {
+  id              Int         @id @default(autoincrement())
+  userId          Int         @map("user_id")
+  productId       Int         @map("product_id")
+  platform        String?
+  decidedPrice    Decimal     @db.Decimal(10, 2)
+  advancePayment  Boolean     @default(false) @map("advance_payment")
+  customerName    String      @map("customer_name")
+  customerPhone   String      @map("customer_phone")
+  customerWhatsapp String      @map("customer_whatsapp")
+  customerEmail   String      @map("customer_email")
+  customerNotes   String?     @map("customer_notes")
+  deliveringDate   DateTime?   @map("delivering_date")
+  deliveryAddress String?     @map("delivery_address")
+  deliveryDate    DateTime?   @map("delivery_date")
+  status          OrderStatus @default(PENDING)
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@index([userId])
+  @@index([productId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("order_requests")
+}
+
+model Payment {
+  id                 Int           @id @default(autoincrement())
+  orderRequestId     Int           @map("order_request_id")
+  userId             Int           @map("user_id")
+  userShare          Decimal       @map("user_share") @db.Decimal(10, 2)
+  referrerId         Int?          @map("referrer_id")
+  referrerShare      Decimal?      @map("referrer_share") @db.Decimal(10, 2)
+  totalPrice         Decimal       @map("total_price") @db.Decimal(10, 2)
+  proofScreenshotUrl String?       @map("proof_screenshot_url")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  status             PaymentStatus @default(PENDING)
+  paymentType        PaymentType   @default(NORMAL) @map("payment_type")
+
+  // Relations
+  orderRequest OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrer     User?        @relation("ReferrerPayments", fields: [referrerId], references: [id], onDelete: SetNull)
+
+  @@index([orderRequestId])
+  @@index([userId])
+  @@index([referrerId])
+  @@map("payments")
+}
+
+// Enums
+enum ProductCategory {
+  BEDS
+  CHAIRS
+  TABLES
+  SOFAS
+  WARDROBES
+  DINING_SETS
+  OFFICE_FURNITURE
+  DECORATIVE_ITEMS
+  LIGHTING
+  STORAGE
+  OTHER
+
+  @@map("product_category")
+}
+
+enum ProductCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  SECOND_HAND
+
+  @@map("product_condition")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  DELIVERED
+  CANCELLED
+  PAYMENT_PENDING
+
+  @@map("order_status")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+
+  @@map("payment_status")
+}
+
+enum PaymentType {
+  NORMAL
+  REFERRAL
+
+  @@map("payment_type")
+}
