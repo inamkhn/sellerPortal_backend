@@ -7,16 +7,11 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/database.service';
-import { User, Role } from '@prisma/client';
+import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import {
-  RegisterDto,
-  LoginDto,
-  ResetPasswordDto,
-  ForgotPasswordDto,
-} from './dto';
+import { RegisterDto, LoginDto } from './dto';
 import {
   AuthResponse,
   TokenPayload,
@@ -243,7 +238,7 @@ export class AuthService {
         secret:
           this.configService.get<string>('REFRESH_TOKEN_SECRET') ||
           'refresh-secret',
-      }) as RefreshTokenPayload;
+      });
 
       // Find user and verify refresh token
       const user = await this.prisma.user.findUnique({
@@ -271,7 +266,7 @@ export class AuthService {
         },
         tokens,
       };
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

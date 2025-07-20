@@ -24,6 +24,7 @@ import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { AuthExceptionFilter } from './filters/auth-exception.filter';
 import { Public, GetUser } from './decorators';
 import { User } from '@prisma/client';
+import { GoogleUser } from './strategies/google.strategy';
 
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
@@ -108,7 +109,7 @@ export class AuthController {
   @Public()
   @Get('google')
   @UseGuards(GoogleAuthGuard)
-  async googleAuth(@Req() req: Request) {
+  async googleAuth() {
     // This route initiates Google OAuth
   }
 
@@ -116,12 +117,13 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(GoogleAuthGuard)
   async googleAuthRedirect(@Req() req: Request): Promise<AuthResponse> {
-    return this.authService.registerWithGoogle(req.user as any);
+    return this.authService.registerWithGoogle(req.user as GoogleUser);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   getProfile(@GetUser() user: User): Omit<User, 'password' | 'refreshToken'> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, refreshToken, ...userProfile } = user;
     return userProfile;
   }

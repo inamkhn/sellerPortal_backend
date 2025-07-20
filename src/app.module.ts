@@ -23,6 +23,7 @@ import { UploadModule } from './upload/upload.module';
     }),
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: 60000, // 60 seconds in milliseconds
         limit: 10,
       },
