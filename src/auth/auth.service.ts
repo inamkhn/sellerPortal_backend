@@ -18,6 +18,7 @@ import {
   RefreshTokenPayload,
 } from './interfaces/auth-response.interface';
 import { GoogleUser } from './strategies/google.strategy';
+import { EmailService } from '../common/services/email.service';
 
 @Injectable()
 export class AuthService {
@@ -25,7 +26,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+    private emailService: EmailService,
+  ) { }
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -48,19 +50,15 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
     };
 
     const refreshTokenId = uuidv4();
     const refreshPayload: RefreshTokenPayload = {
       sub: user.id,
       tokenId: refreshTokenId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = this.jwtService.sign(refreshPayload, {
       secret:
         this.configService.get<string>('REFRESH_TOKEN_SECRET') ||
@@ -113,14 +111,24 @@ export class AuthService {
     // Generate tokens
     const tokens = await this.generateTokens(user);
 
-    // TODO: Send verification email (will be implemented in email verification task)
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        emailVerificationToken,
+        user.firstName || undefined,
+      );
+    } catch (error) {
+      // Log error but don't fail registration
+      console.error('Failed to send verification email:', error);
+    }
 
     return {
       user: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
         role: user.role,
         isVerified: user.isVerified,
       },
@@ -163,8 +171,8 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
         role: user.role,
         isVerified: user.isVerified,
       },
@@ -222,8 +230,8 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
         role: user.role,
         isVerified: user.isVerified,
       },
@@ -259,8 +267,8 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          firstName: user.firstName || undefined,
+          lastName: user.lastName || undefined,
           role: user.role,
           isVerified: user.isVerified,
         },
@@ -335,10 +343,18 @@ export class AuthService {
       },
     });
 
-    // TODO: Send verification email (email service integration)
-    console.log(
-      `Verification email sent to ${email} with token: ${emailVerificationToken}`,
-    );
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(
+        email,
+        emailVerificationToken,
+        user.firstName || undefined,
+      );
+    } catch (error) {
+      // Log error but don't fail the operation
+      console.error('Failed to send verification email:', error);
+      throw new BadRequestException('Failed to send verification email');
+    }
   }
 
   // Password reset functionality
@@ -364,10 +380,17 @@ export class AuthService {
       },
     });
 
-    // TODO: Send password reset email (email service integration)
-    console.log(
-      `Password reset email sent to ${email} with token: ${passwordResetToken}`,
-    );
+    // Send password reset email
+    try {
+      await this.emailService.sendPasswordResetEmail(
+        email,
+        passwordResetToken,
+        user.firstName || undefined,
+      );
+    } catch (error) {
+      // Log error but don't fail the operation for security reasons
+      console.error('Failed to send password reset email:', error);
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -400,8 +423,16 @@ export class AuthService {
       },
     });
 
-    // TODO: Send password reset confirmation email
-    console.log(`Password reset successful for user: ${user.email}`);
+    // Send password reset confirmation email
+    try {
+      await this.emailService.sendPasswordResetConfirmation(
+        user.email,
+        user.firstName || undefined,
+      );
+    } catch (error) {
+      // Log error but don't fail the operation
+      console.error('Failed to send password reset confirmation email:', error);
+    }
   }
 
   // Get user by ID (for JWT strategy)

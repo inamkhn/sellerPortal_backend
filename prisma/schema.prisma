@@ -10,33 +10,34 @@ datasource db {
 enum Role {
   USER
   ADMIN
+
   @@map("role")
 }
 
 model User {
-  id           Int          @id @default(autoincrement())
-  email        String       @unique
-  password     String?      // Null for Google auth users
-  firstName    String?      @map("first_name")
-  lastName     String?      @map("last_name")
-  avatar       String?      
-  role         Role         @default(USER)
-  isVerified   Boolean      @default(false) @map("is_verified")
-  googleId     String?      @unique @map("google_id") 
-  lastLogin    DateTime?    @map("last_login")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id         Int       @id @default(autoincrement())
+  email      String    @unique
+  password   String? // Null for Google auth users
+  firstName  String?   @map("first_name")
+  lastName   String?   @map("last_name")
+  avatar     String?
+  role       Role      @default(USER)
+  isVerified Boolean   @default(false) @map("is_verified")
+  googleId   String?   @unique @map("google_id")
+  lastLogin  DateTime? @map("last_login")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   // JWT Token fields
-  refreshToken   String?   @unique @map("refresh_token")
+  refreshToken String? @unique @map("refresh_token")
 
   // Email verification fields
-  emailVerificationToken      String?   @unique @map("email_verification_token")
-  emailVerificationExpiry     DateTime? @map("email_verification_expiry")
-  
+  emailVerificationToken  String?   @unique @map("email_verification_token")
+  emailVerificationExpiry DateTime? @map("email_verification_expiry")
+
   // Password reset fields
-  passwordResetToken          String?   @unique @map("password_reset_token")
-  passwordResetTokenExpiry    DateTime? @map("password_reset_token_expiry")
+  passwordResetToken       String?   @unique @map("password_reset_token")
+  passwordResetTokenExpiry DateTime? @map("password_reset_token_expiry")
 
   // Relations
   profile            Profile?
@@ -60,24 +61,26 @@ enum BankAccount {
   JAZZCASH
   BANK_ACCOUNT
   OTHER
+
   @@map("bank_account")
 }
 
 model Profile {
-  id              Int      @id @default(autoincrement())
-  userId          Int      @unique @map("user_id")
-  fullName        String?  @map("full_name")
-  address         String?
-  whatsappNumber  String?  @map("whatsapp_number")
-  bankAccount     BankAccount? @map("bank_account")
-  facebookLink    String?  @map("facebook_link")
-  dubizzleLink    String?  @map("dubizzle_link")
-  verified        Boolean  @default(false)
-  referralCode    String   @unique @map("referral_code")
-  referredBy      Int?     @map("referred_by")
-  listedProducts  String[] @default([]) @map("listed_products")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             Int          @id @default(autoincrement())
+  userId         Int          @unique @map("user_id")
+  fullName       String?      @map("full_name")
+  address        String?
+  whatsappNumber String?      @map("whatsapp_number")
+  bankAccount    BankAccount? @map("bank_account")
+  accountNumber  String?      @map("account_number")
+  facebookLink   String?      @map("facebook_link")
+  dubizzleLink   String?      @map("dubizzle_link")
+  verified       Boolean      @default(false)
+  referralCode   String       @unique @map("referral_code")
+  referredBy     Int?         @map("referred_by")
+  listedProducts String[]     @default([]) @map("listed_products")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   // Relations
   user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -116,7 +119,7 @@ model Product {
   photos      String[]         @default([])
   brand       String?
   colors      String[]         @default([])
-  location    String?          
+  location    String?
   material    String?
   productTags String[]         @default([]) @map("product_tags")
   quantity    Int              @default(1)
@@ -136,23 +139,26 @@ model Product {
 }
 
 model OrderRequest {
-  id              Int         @id @default(autoincrement())
-  userId          Int         @map("user_id")
-  productId       Int         @map("product_id")
-  platform        String?
-  decidedPrice    Decimal     @db.Decimal(10, 2)
-  advancePayment  Boolean     @default(false) @map("advance_payment")
-  customerName    String      @map("customer_name")
-  customerPhone   String      @map("customer_phone")
-  customerWhatsapp String      @map("customer_whatsapp")
-  customerEmail   String      @map("customer_email")
-  customerNotes   String?     @map("customer_notes")
-  deliveringDate   DateTime?   @map("delivering_date")
-  deliveryAddress String?     @map("delivery_address")
-  deliveryDate    DateTime?   @map("delivery_date")
-  status          OrderStatus @default(PENDING)
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  id                 Int         @id @default(autoincrement())
+  userId             Int         @map("user_id")
+  productId          Int         @map("product_id")
+  platform           String?
+  decidedPrice       Decimal     @db.Decimal(10, 2)
+  advancePayment     Boolean     @default(false) @map("advance_payment")
+  customerName       String      @map("customer_name")
+  customerPhone      String      @map("customer_phone")
+  customerWhatsapp   String      @map("customer_whatsapp")
+  customerEmail      String      @map("customer_email")
+  customerNotes      String?     @map("customer_notes")
+  productName        String?     @map("product_name")
+  productDescription String?     @map("product_des")
+  customize_images   String[]    @default([]) @map("customize_image")
+  deliveringDate     DateTime?   @map("delivering_date")
+  deliveryAddress    String?     @map("delivery_address")
+  deliveryDate       DateTime?   @map("delivery_date")
+  status             OrderStatus @default(PENDING)
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
 
   // Relations
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -177,7 +183,7 @@ model Payment {
   proofScreenshotUrl String?       @map("proof_screenshot_url")
   createdAt          DateTime      @default(now()) @map("created_at")
   status             PaymentStatus @default(PENDING)
-  paymentType        PaymentType   @default(NORMAL) @map("payment_type")
+  paymentType        PaymentType   @default(SELLER) @map("payment_type")
 
   // Relations
   orderRequest OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
@@ -202,6 +208,7 @@ enum ProductCategory {
   DECORATIVE_ITEMS
   LIGHTING
   STORAGE
+  DRESSER
   OTHER
 
   @@map("product_category")
@@ -237,7 +244,7 @@ enum PaymentStatus {
 }
 
 enum PaymentType {
-  NORMAL
+  SELLER
   REFERRAL
 
   @@map("payment_type")

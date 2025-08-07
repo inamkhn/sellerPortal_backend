@@ -22,12 +22,12 @@ export class AuthExceptionFilter implements ExceptionFilter {
     };
 
     // Add additional context for specific error types
-    if (status === HttpStatus.UNAUTHORIZED) {
+    if (status === (HttpStatus.UNAUTHORIZED as number)) {
       errorResponse.message =
         'Authentication failed. Please check your credentials.';
-    } else if (status === HttpStatus.FORBIDDEN) {
+    } else if (status === (HttpStatus.FORBIDDEN as number)) {
       errorResponse.message = 'Access denied. Insufficient permissions.';
-    } else if (status === HttpStatus.CONFLICT) {
+    } else if (status === (HttpStatus.CONFLICT as number)) {
       errorResponse.message = 'Resource conflict. User may already exist.';
     }
 
@@ -35,7 +35,7 @@ export class AuthExceptionFilter implements ExceptionFilter {
   }
 
   private getErrorType(status: number): string {
-    switch (status) {
+    switch (status as HttpStatus) {
       case HttpStatus.UNAUTHORIZED:
         return 'Unauthorized';
       case HttpStatus.FORBIDDEN:

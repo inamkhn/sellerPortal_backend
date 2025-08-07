@@ -14,6 +14,8 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { UploadModule } from './upload/upload.module';
+import { UserAnalyticsModule } from './user-analytics/user-analytics.module';
+import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { UploadModule } from './upload/upload.module';
     PaymentsModule,
     ReferralsModule,
     UploadModule,
+    UserAnalyticsModule,
+    AdminAnalyticsModule,
   ],
 })
 export class AppModule {}

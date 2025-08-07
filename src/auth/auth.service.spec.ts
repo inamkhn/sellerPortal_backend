@@ -13,8 +13,11 @@ import * as bcrypt from 'bcryptjs';
 
 describe('AuthService', () => {
   let service: AuthService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let prismaService: PrismaService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let jwtService: JwtService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let configService: ConfigService;
 
   const mockUser = {
@@ -254,7 +257,7 @@ describe('AuthService', () => {
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: userWithResetToken.id },
         data: {
-          password: expect.any(String),
+          password: expect.any(String) as string,
           passwordResetToken: null,
           passwordResetTokenExpiry: null,
           refreshToken: null,

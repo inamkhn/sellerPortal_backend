@@ -59,7 +59,7 @@ async function hashPassword(password: string): Promise<string> {
 // Seed function declarations with proper types
 async function seedUsers(): Promise<User[]> {
   console.log('👤 Seeding users...');
-  
+
   const usersData = [
     {
       email: 'admin@example.com',
@@ -109,17 +109,20 @@ async function seedUsers(): Promise<User[]> {
 
 async function seedProfiles(users: User[]): Promise<Profile[]> {
   console.log('👤 Seeding profiles...');
-  
+
   const profiles: Profile[] = [];
   for (const user of users) {
+    const firstName = user.firstName || 'User';
+    const lastName = user.lastName || 'Profile';
+
     const profile = await prisma.profile.create({
       data: {
         userId: user.id,
-        fullName: `${user.firstName} ${user.lastName}`,
-        address: `Address for ${user.firstName} ${user.lastName}`,
+        fullName: `${firstName} ${lastName}`,
+        address: `Address for ${firstName} ${lastName}`,
         whatsappNumber: generateWhatsAppNumber(),
         bankAccount: getRandomEnum(BankAccount),
-        facebookLink: `https://facebook.com/${user.firstName.toLowerCase()}.${user.lastName.toLowerCase()}`,
+        facebookLink: `https://facebook.com/${firstName.toLowerCase()}.${lastName.toLowerCase()}`,
         dubizzleLink: `https://dubizzle.com/users/${user.id}`,
         verified: user.role === Role.ADMIN || Math.random() > 0.5, // Admins always verified, others 50% chance
         referralCode: generateReferralCode(),
@@ -135,19 +138,49 @@ async function seedProfiles(users: User[]): Promise<Profile[]> {
 
 async function seedProducts(users: User[]): Promise<Product[]> {
   console.log('🛋️ Seeding products...');
-  
+
   const productsData = [
-    { title: 'Comfortable Sofa', category: ProductCategory.SOFAS, condition: ProductCondition.LIKE_NEW, brand: 'IKEA' },
-    { title: 'Wooden Dining Table', category: ProductCategory.DINING_SETS, condition: ProductCondition.GOOD, brand: 'HomeCenter' },
-    { title: 'Office Chair', category: ProductCategory.OFFICE_FURNITURE, condition: ProductCondition.NEW, brand: 'Herman Miller' },
-    { title: 'King Size Bed', category: ProductCategory.BEDS, condition: ProductCondition.SECOND_HAND, brand: 'SleepWell' },
-    { title: 'Wardrobe', category: ProductCategory.WARDROBES, condition: ProductCondition.FAIR, brand: 'HomeTown' },
-    { title: 'Decorative Lamp', category: ProductCategory.DECORATIVE_ITEMS, condition: ProductCondition.NEW, brand: 'Philips' },
+    {
+      title: 'Comfortable Sofa',
+      category: ProductCategory.SOFAS,
+      condition: ProductCondition.LIKE_NEW,
+      brand: 'IKEA',
+    },
+    {
+      title: 'Wooden Dining Table',
+      category: ProductCategory.DINING_SETS,
+      condition: ProductCondition.GOOD,
+      brand: 'HomeCenter',
+    },
+    {
+      title: 'Office Chair',
+      category: ProductCategory.OFFICE_FURNITURE,
+      condition: ProductCondition.NEW,
+      brand: 'Herman Miller',
+    },
+    {
+      title: 'King Size Bed',
+      category: ProductCategory.BEDS,
+      condition: ProductCondition.SECOND_HAND,
+      brand: 'SleepWell',
+    },
+    {
+      title: 'Wardrobe',
+      category: ProductCategory.WARDROBES,
+      condition: ProductCondition.FAIR,
+      brand: 'HomeTown',
+    },
+    {
+      title: 'Decorative Lamp',
+      category: ProductCategory.DECORATIVE_ITEMS,
+      condition: ProductCondition.NEW,
+      brand: 'Philips',
+    },
   ];
 
-  const products = [];
+  const products: Product[] = [];
   for (const productData of productsData) {
-    const owner = getRandomElement(users.filter(u => u.role === Role.USER)); // Only regular users can own products
+    const owner = getRandomElement(users.filter((u) => u.role === Role.USER)); // Only regular users can own products
     const product = await prisma.product.create({
       data: {
         ownerId: owner.id,
@@ -156,7 +189,9 @@ async function seedProducts(users: User[]): Promise<Product[]> {
         price: generateRandomPrice(1000, 50000),
         category: productData.category,
         condition: productData.condition,
-        photos: [`https://example.com/photos/${productData.title.toLowerCase().replace(/ /g, '-')}.jpg`],
+        photos: [
+          `https://example.com/photos/${productData.title.toLowerCase().replace(/ /g, '-')}.jpg`,
+        ],
         brand: productData.brand,
         colors: ['Black', 'White', 'Brown'],
         location: 'Karachi, Pakistan',
@@ -177,17 +212,22 @@ async function seedOrderRequests(
   products: Product[],
 ): Promise<OrderRequest[]> {
   console.log('📦 Seeding order requests...');
-  
+
   const orders: OrderRequest[] = [];
   for (let i = 0; i < 10; i++) {
-    const user = getRandomElement(users.filter(u => u.role === Role.USER));
+    const user = getRandomElement(users.filter((u) => u.role === Role.USER));
     const product = getRandomElement(products);
-    
+
     const order = await prisma.orderRequest.create({
       data: {
         userId: user.id,
         productId: product.id,
-        platform: getRandomElement(['Website', 'Facebook', 'Instagram', 'WhatsApp']),
+        platform: getRandomElement([
+          'Website',
+          'Facebook',
+          'Instagram',
+          'WhatsApp',
+        ]),
         decidedPrice: product.price,
         advancePayment: Math.random() > 0.5,
         customerName: `${user.firstName} ${user.lastName}`,
@@ -211,27 +251,29 @@ async function seedPayments(
   users: User[],
 ): Promise<Payment[]> {
   console.log('💰 Seeding payments...');
-  
+
   const payments: Payment[] = [];
   for (const order of orders) {
-    const user = users.find(u => u.id === order.userId);
+    const user = users.find((u) => u.id === order.userId);
     if (!user) continue;
-    
+
     // 30% chance of having a referral
     const hasReferral = Math.random() < 0.3;
-    const referrer = hasReferral ? getRandomElement(users.filter(u => u.id !== user.id)) : undefined;
-    
+    const referrer = hasReferral
+      ? getRandomElement(users.filter((u) => u.id !== user.id))
+      : undefined;
+
     const payment = await prisma.payment.create({
       data: {
         orderRequestId: order.id,
         userId: user.id,
-        userShare: order.decidedPrice * 0.8, // User gets 80%
+        userShare: Number(order.decidedPrice) * 0.8, // User gets 80%
         referrerId: referrer?.id,
-        referrerShare: referrer ? order.decidedPrice * 0.2 : null, // Referrer gets 20%
+        referrerShare: referrer ? Number(order.decidedPrice) * 0.2 : null, // Referrer gets 20%
         totalPrice: order.decidedPrice,
         proofScreenshotUrl: `https://example.com/payments/${order.id}.png`,
         status: getRandomEnum(PaymentStatus),
-        paymentType: referrer ? PaymentType.REFERRAL : PaymentType.NORMAL,
+        paymentType: referrer ? PaymentType.REFERRAL : PaymentType.SELLER,
       },
     });
     payments.push(payment);
@@ -243,17 +285,24 @@ async function seedPayments(
 
 async function seedReferrals(users: User[]): Promise<Referral[]> {
   console.log('👥 Seeding referrals...');
-  
+
   const referrals: Referral[] = [];
   // Create some referral relationships
   for (let i = 0; i < 5; i++) {
     const referrer = getRandomElement(users);
     // Find a user who is not the referrer and not already referred by this referrer
-    const referee = getRandomElement(users.filter(u => u.id !== referrer.id && 
-      !referrals.some(r => r.referrerId === referrer.id && r.refereeId === u.id)));
-    
+    const referee = getRandomElement(
+      users.filter(
+        (u) =>
+          u.id !== referrer.id &&
+          !referrals.some(
+            (r) => r.referrerId === referrer.id && r.refereeId === u.id,
+          ),
+      ),
+    );
+
     if (!referee) continue;
-    
+
     const referral = await prisma.referral.create({
       data: {
         referrerId: referrer.id,
