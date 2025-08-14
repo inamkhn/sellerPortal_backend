@@ -19,6 +19,12 @@ import {
 } from './interfaces/auth-response.interface';
 import { GoogleUser } from './strategies/google.strategy';
 import { EmailService } from '../common/services/email.service';
+import {
+  generateOTP,
+  generateOTPExpiry,
+  isOTPExpired,
+  isValidOTPFormat,
+} from '../common/utils/otp.util';
 
 @Injectable()
 export class AuthService {
@@ -91,9 +97,9 @@ export class AuthService {
     // Hash password
     const hashedPassword = await this.hashPassword(password);
 
-    // Generate email verification token
-    const emailVerificationToken = uuidv4();
-    const emailVerificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    // Generate email verification OTP
+    const emailVerificationOtp = generateOTP(6);
+    const emailVerificationExpiry = generateOTPExpiry(15); // 15 minutes
 
     // Create user
     const user = await this.prisma.user.create({
@@ -102,7 +108,7 @@ export class AuthService {
         password: hashedPassword,
         firstName,
         lastName,
-        emailVerificationToken,
+        emailVerificationOtp,
         emailVerificationExpiry,
         isVerified: false,
       },
@@ -115,7 +121,7 @@ export class AuthService {
     try {
       await this.emailService.sendVerificationEmail(
         user.email,
-        emailVerificationToken,
+        emailVerificationOtp,
         user.firstName || undefined,
       );
     } catch (error) {
@@ -290,29 +296,42 @@ export class AuthService {
     });
   }
 
-  // Email verification
-  async verifyEmail(token: string): Promise<void> {
+  // Email verification with OTP
+  async verifyEmail(email: string, otp: string): Promise<void> {
+    // Validate OTP format
+    if (!isValidOTPFormat(otp, 6)) {
+      throw new BadRequestException('Invalid OTP format');
+    }
+
     const user = await this.prisma.user.findUnique({
-      where: { emailVerificationToken: token },
+      where: { email },
     });
 
     if (!user) {
-      throw new BadRequestException('Invalid verification token');
+      throw new BadRequestException('User not found');
+    }
+
+    if (!user.emailVerificationOtp) {
+      throw new BadRequestException('No verification OTP found');
+    }
+
+    if (user.emailVerificationOtp !== otp) {
+      throw new BadRequestException('Invalid verification OTP');
     }
 
     if (
       !user.emailVerificationExpiry ||
-      user.emailVerificationExpiry < new Date()
+      isOTPExpired(user.emailVerificationExpiry)
     ) {
-      throw new BadRequestException('Verification token has expired');
+      throw new BadRequestException('Verification OTP has expired');
     }
 
-    // Mark user as verified and clear verification token
+    // Mark user as verified and clear verification OTP
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
         isVerified: true,
-        emailVerificationToken: null,
+        emailVerificationOtp: null,
         emailVerificationExpiry: null,
       },
     });
@@ -331,14 +350,14 @@ export class AuthService {
       throw new BadRequestException('Email is already verified');
     }
 
-    // Generate new verification token
-    const emailVerificationToken = uuidv4();
-    const emailVerificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    // Generate new verification OTP
+    const emailVerificationOtp = generateOTP(6);
+    const emailVerificationExpiry = generateOTPExpiry(15); // 15 minutes
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        emailVerificationToken,
+        emailVerificationOtp,
         emailVerificationExpiry,
       },
     });
@@ -347,7 +366,7 @@ export class AuthService {
     try {
       await this.emailService.sendVerificationEmail(
         email,
-        emailVerificationToken,
+        emailVerificationOtp,
         user.firstName || undefined,
       );
     } catch (error) {
@@ -368,15 +387,15 @@ export class AuthService {
       return;
     }
 
-    // Generate password reset token
-    const passwordResetToken = uuidv4();
-    const passwordResetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    // Generate password reset OTP
+    const passwordResetOtp = generateOTP(6);
+    const passwordResetExpiry = generateOTPExpiry(15); // 15 minutes
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordResetToken,
-        passwordResetTokenExpiry,
+        passwordResetOtp,
+        passwordResetExpiry,
       },
     });
 
@@ -384,7 +403,7 @@ export class AuthService {
     try {
       await this.emailService.sendPasswordResetEmail(
         email,
-        passwordResetToken,
+        passwordResetOtp,
         user.firstName || undefined,
       );
     } catch (error) {
@@ -393,32 +412,46 @@ export class AuthService {
     }
   }
 
-  async resetPassword(token: string, newPassword: string): Promise<void> {
+  async resetPassword(
+    email: string,
+    otp: string,
+    newPassword: string,
+  ): Promise<void> {
+    // Validate OTP format
+    if (!isValidOTPFormat(otp, 6)) {
+      throw new BadRequestException('Invalid OTP format');
+    }
+
     const user = await this.prisma.user.findUnique({
-      where: { passwordResetToken: token },
+      where: { email },
     });
 
     if (!user) {
-      throw new BadRequestException('Invalid reset token');
+      throw new BadRequestException('User not found');
     }
 
-    if (
-      !user.passwordResetTokenExpiry ||
-      user.passwordResetTokenExpiry < new Date()
-    ) {
-      throw new BadRequestException('Reset token has expired');
+    if (!user.passwordResetOtp) {
+      throw new BadRequestException('No password reset OTP found');
+    }
+
+    if (user.passwordResetOtp !== otp) {
+      throw new BadRequestException('Invalid password reset OTP');
+    }
+
+    if (!user.passwordResetExpiry || isOTPExpired(user.passwordResetExpiry)) {
+      throw new BadRequestException('Password reset OTP has expired');
     }
 
     // Hash new password
     const hashedPassword = await this.hashPassword(newPassword);
 
-    // Update password and clear reset token, also invalidate all refresh tokens
+    // Update password and clear reset OTP, also invalidate all refresh tokens
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
-        passwordResetToken: null,
-        passwordResetTokenExpiry: null,
+        passwordResetOtp: null,
+        passwordResetExpiry: null,
         refreshToken: null, // Invalidate all sessions
       },
     });

@@ -43,14 +43,14 @@ import { GoogleUser } from './strategies/google.strategy';
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService) {}
 
   @Public()
   @Post('register')
   @ApiOperation({
     summary: 'Register a new user',
     description:
-      'Creates a new user account with email and password. Sends email verification token.',
+      'Creates a new user account with email and password. Sends email verification OTP.',
   })
   @ApiResponse({
     status: 201,
@@ -292,8 +292,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verify email address',
-    description:
-      'Verifies user email address using verification token sent via email',
+    description: 'Verifies user email address using 6-digit OTP sent via email',
   })
   @ApiOkResponse({
     description: 'Email successfully verified',
@@ -304,11 +303,11 @@ export class AuthController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Invalid or expired verification token',
+    description: 'Invalid or expired verification OTP',
     schema: {
       example: {
         statusCode: 400,
-        message: 'Invalid verification token',
+        message: 'Invalid verification OTP',
         error: 'Bad Request',
       },
     },
@@ -316,7 +315,10 @@ export class AuthController {
   async verifyEmail(
     @Body() verifyEmailDto: VerifyEmailDto,
   ): Promise<{ message: string }> {
-    await this.authService.verifyEmail(verifyEmailDto.token);
+    await this.authService.verifyEmail(
+      verifyEmailDto.email,
+      verifyEmailDto.otp,
+    );
     return { message: 'Email verified successfully' };
   }
 
@@ -325,7 +327,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Resend email verification',
-    description: 'Resends email verification token to user email address',
+    description: 'Resends email verification OTP to user email address',
   })
   @ApiOkResponse({
     description: 'Verification email sent successfully',
@@ -389,7 +391,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Reset password',
-    description: 'Resets user password using reset token from email',
+    description: 'Resets user password using reset OTP from email',
   })
   @ApiOkResponse({
     description: 'Password reset successfully',
@@ -400,11 +402,11 @@ export class AuthController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Invalid or expired reset token',
+    description: 'Invalid or expired reset OTP',
     schema: {
       example: {
         statusCode: 400,
-        message: 'Invalid reset token',
+        message: 'Invalid reset OTP',
         error: 'Bad Request',
       },
     },
@@ -413,7 +415,8 @@ export class AuthController {
     @Body() resetPasswordDto: ResetPasswordDto,
   ): Promise<{ message: string }> {
     await this.authService.resetPassword(
-      resetPasswordDto.token,
+      resetPasswordDto.email,
+      resetPasswordDto.otp,
       resetPasswordDto.newPassword,
     );
     return { message: 'Password reset successfully' };

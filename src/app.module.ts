@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { LoggerModule } from 'nestjs-pino';
 import { join } from 'path';
 
 import { DatabaseModule } from './database/database.module';
@@ -22,6 +23,48 @@ import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+    }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const isProduction = configService.get('NODE_ENV') === 'production';
+
+        return {
+          pinoHttp: {
+            level: isProduction ? 'info' : 'debug',
+            transport: isProduction
+              ? undefined
+              : {
+                  target: 'pino-pretty',
+                  options: {
+                    colorize: true,
+                    translateTime: 'SYS:standard',
+                    ignore: 'pid,hostname',
+                    singleLine: true,
+                  },
+                },
+            serializers: {
+              req: (req: {
+                id?: string;
+                method?: string;
+                url?: string;
+                remoteAddress?: string;
+                remotePort?: number;
+              }) => ({
+                id: req.id || '',
+                method: req.method || '',
+                url: req.url || '',
+                remoteAddress: req.remoteAddress || '',
+                remotePort: req.remotePort || 0,
+              }),
+              res: (res: { statusCode?: number }) => ({
+                statusCode: res.statusCode || 0,
+              }),
+            },
+          },
+        };
+      },
     }),
     ThrottlerModule.forRoot([
       {

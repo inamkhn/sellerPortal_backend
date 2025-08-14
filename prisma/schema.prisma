@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   USER
   ADMIN
+  REFERRAL_MANAGER
 
   @@map("role")
 }
@@ -32,12 +33,12 @@ model User {
   refreshToken String? @unique @map("refresh_token")
 
   // Email verification fields
-  emailVerificationToken  String?   @unique @map("email_verification_token")
+  emailVerificationOtp    String?   @map("email_verification_otp")
   emailVerificationExpiry DateTime? @map("email_verification_expiry")
 
   // Password reset fields
-  passwordResetToken       String?   @unique @map("password_reset_token")
-  passwordResetTokenExpiry DateTime? @map("password_reset_token_expiry")
+  passwordResetOtp    String?   @map("password_reset_otp")
+  passwordResetExpiry DateTime? @map("password_reset_expiry")
 
   // Relations
   profile            Profile?
@@ -157,6 +158,9 @@ model OrderRequest {
   deliveryAddress    String?     @map("delivery_address")
   deliveryDate       DateTime?   @map("delivery_date")
   status             OrderStatus @default(PENDING)
+  productCost        String? 
+  ownerCost          String?
+  advance_pay        String?
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
