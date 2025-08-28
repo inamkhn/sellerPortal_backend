@@ -33,7 +33,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) { }
+  ) {}
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {

@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as compression from 'compression';
 import helmet from 'helmet';
 
@@ -16,14 +17,19 @@ async function bootstrap() {
   // Use Pino logger
   app.useLogger(app.get(Logger));
 
+  // Configure WebSocket adapter
+  app.useWebSocketAdapter(new IoAdapter(app));
+
   const configService = app.get(ConfigService);
 
   // Security & Performance
   app.use(helmet());
   app.use(compression());
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL'),
+    origin: configService.get<string>('FRONTEND_URL') || '*',
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Global pipes and filters

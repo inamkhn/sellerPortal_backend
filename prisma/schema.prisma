@@ -3,67 +3,45 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql" // or "mysql", "sqlite", etc.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  USER
-  ADMIN
-  REFERRAL_MANAGER
-
-  @@map("role")
-}
-
 model User {
-  id         Int       @id @default(autoincrement())
-  email      String    @unique
-  password   String? // Null for Google auth users
-  firstName  String?   @map("first_name")
-  lastName   String?   @map("last_name")
-  avatar     String?
-  role       Role      @default(USER)
-  isVerified Boolean   @default(false) @map("is_verified")
-  googleId   String?   @unique @map("google_id")
-  lastLogin  DateTime? @map("last_login")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-
-  // JWT Token fields
-  refreshToken String? @unique @map("refresh_token")
-
-  // Email verification fields
-  emailVerificationOtp    String?   @map("email_verification_otp")
-  emailVerificationExpiry DateTime? @map("email_verification_expiry")
-
-  // Password reset fields
-  passwordResetOtp    String?   @map("password_reset_otp")
-  passwordResetExpiry DateTime? @map("password_reset_expiry")
-
-  // Relations
-  profile            Profile?
-  products           Product[]
-  orderRequests      OrderRequest[]
-  payments           Payment[]
-  referralsMade      Referral[]     @relation("ReferrerRelation")
-  referralsReceived  Referral[]     @relation("RefereeRelation")
-  referredUsers      Profile[]      @relation("ReferredByRelation")
-  paymentsAsReferrer Payment[]      @relation("ReferrerPayments")
+  id                      Int            @id @default(autoincrement())
+  email                   String         @unique
+  password                String?
+  firstName               String?        @map("first_name")
+  lastName                String?        @map("last_name")
+  avatar                  String?
+  role                    Role           @default(USER)
+  isVerified              Boolean        @default(false) @map("is_verified")
+  googleId                String?        @unique @map("google_id")
+  lastLogin               DateTime?      @map("last_login")
+  createdAt               DateTime       @default(now()) @map("created_at")
+  updatedAt               DateTime       @updatedAt @map("updated_at")
+  emailVerificationExpiry DateTime?      @map("email_verification_expiry")
+  refreshToken            String?        @unique @map("refresh_token")
+  emailVerificationOtp    String?        @map("email_verification_otp")
+  passwordResetExpiry     DateTime?      @map("password_reset_expiry")
+  passwordResetOtp        String?        @map("password_reset_otp")
+  conversationsAsUser1    Conversation[] @relation("User1Conversations")
+  conversationsAsUser2    Conversation[] @relation("User2Conversations")
+  sentMessages            Message[]      @relation("SentMessages")
+  orderRequests           OrderRequest[]
+  paymentsAsReferrer      Payment[]      @relation("ReferrerPayments")
+  payments                Payment[]
+  products                Product[]
+  referredUsers           Profile[]      @relation("ReferredByRelation")
+  profile                 Profile?
+  referralsReceived       Referral[]     @relation("RefereeRelation")
+  referralsMade           Referral[]     @relation("ReferrerRelation")
 
   @@index([email])
   @@index([googleId])
   @@index([role])
   @@index([refreshToken])
   @@map("users")
-}
-
-enum BankAccount {
-  EASYPAISA
-  JAZZCASH
-  BANK_ACCOUNT
-  OTHER
-
-  @@map("bank_account")
 }
 
 model Profile {
@@ -73,7 +51,6 @@ model Profile {
   address        String?
   whatsappNumber String?      @map("whatsapp_number")
   bankAccount    BankAccount? @map("bank_account")
-  accountNumber  String?      @map("account_number")
   facebookLink   String?      @map("facebook_link")
   dubizzleLink   String?      @map("dubizzle_link")
   verified       Boolean      @default(false)
@@ -82,10 +59,9 @@ model Profile {
   listedProducts String[]     @default([]) @map("listed_products")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
-
-  // Relations
-  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referrer User? @relation("ReferredByRelation", fields: [referredBy], references: [id], onDelete: SetNull)
+  accountNumber  String?      @map("account_number")
+  referrer       User?        @relation("ReferredByRelation", fields: [referredBy], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([referralCode])
   @@index([verified])
@@ -98,10 +74,8 @@ model Referral {
   referrerId Int      @map("referrer_id")
   refereeId  Int      @map("referee_id")
   createdAt  DateTime @default(now()) @map("created_at")
-
-  // Relations
-  referrer User @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
-  referee  User @relation("RefereeRelation", fields: [refereeId], references: [id], onDelete: Cascade)
+  referee    User     @relation("RefereeRelation", fields: [refereeId], references: [id], onDelete: Cascade)
+  referrer   User     @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
 
   @@unique([referrerId, refereeId])
   @@index([referrerId])
@@ -110,26 +84,24 @@ model Referral {
 }
 
 model Product {
-  id          Int              @id @default(autoincrement())
-  ownerId     Int              @map("owner_id")
-  title       String
-  description String?
-  price       Decimal          @db.Decimal(10, 2)
-  category    ProductCategory
-  condition   ProductCondition
-  photos      String[]         @default([])
-  brand       String?
-  colors      String[]         @default([])
-  location    String?
-  material    String?
-  productTags String[]         @default([]) @map("product_tags")
-  quantity    Int              @default(1)
-  sku         String?          @unique
-  createdAt   DateTime         @default(now()) @map("created_at")
-
-  // Relations
-  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id            Int              @id @default(autoincrement())
+  ownerId       Int              @map("owner_id")
+  title         String
+  description   String?
+  price         Decimal          @db.Decimal(10, 2)
+  category      ProductCategory
+  condition     ProductCondition
+  photos        String[]         @default([])
+  brand         String?
+  colors        String[]         @default([])
+  location      String?
+  material      String?
+  productTags   String[]         @default([]) @map("product_tags")
+  quantity      Int              @default(1)
+  sku           String?          @unique
+  createdAt     DateTime         @default(now()) @map("created_at")
   orderRequests OrderRequest[]
+  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
   @@index([category])
@@ -150,24 +122,22 @@ model OrderRequest {
   customerPhone      String      @map("customer_phone")
   customerWhatsapp   String      @map("customer_whatsapp")
   customerEmail      String      @map("customer_email")
-  customerNotes      String?     @map("customer_notes")
-  productName        String?     @map("product_name")
-  productDescription String?     @map("product_des")
-  customize_images   String[]    @default([]) @map("customize_image")
   deliveringDate     DateTime?   @map("delivering_date")
   deliveryAddress    String?     @map("delivery_address")
   deliveryDate       DateTime?   @map("delivery_date")
   status             OrderStatus @default(PENDING)
-  productCost        String? 
-  ownerCost          String?
-  advance_pay        String?
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
-
-  // Relations
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  payments Payment[]
+  customize_images   String[]    @default([]) @map("customize_image")
+  productDescription String?     @map("product_des")
+  productName        String?     @map("product_name")
+  customerNotes      String?     @map("customer_notes")
+  advance_pay        String?
+  platform_Cost      String?
+  product_Cost       String?
+  product            Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments           Payment[]
 
   @@index([userId])
   @@index([productId])
@@ -188,11 +158,9 @@ model Payment {
   createdAt          DateTime      @default(now()) @map("created_at")
   status             PaymentStatus @default(PENDING)
   paymentType        PaymentType   @default(SELLER) @map("payment_type")
-
-  // Relations
-  orderRequest OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referrer     User?        @relation("ReferrerPayments", fields: [referrerId], references: [id], onDelete: SetNull)
+  orderRequest       OrderRequest  @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+  referrer           User?         @relation("ReferrerPayments", fields: [referrerId], references: [id])
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([orderRequestId])
   @@index([userId])
@@ -200,20 +168,75 @@ model Payment {
   @@map("payments")
 }
 
-// Enums
+model Conversation {
+  id        Int       @id @default(autoincrement())
+  user1Id   Int       @map("user1_id")
+  user2Id   Int       @map("user2_id")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user1     User      @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2     User      @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([isActive])
+  @@map("conversations")
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int          @map("conversation_id")
+  senderId       Int          @map("sender_id")
+  content        String
+  messageType    MessageType  @default(TEXT) @map("message_type")
+  attachmentUrl  String?      @map("attachment_url")
+  isRead         Boolean      @default(false) @map("is_read")
+  readAt         DateTime?    @map("read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([isRead])
+  @@map("messages")
+}
+
+enum Role {
+  USER
+  ADMIN
+  REFERRAL_MANAGER
+
+  @@map("role")
+}
+
+enum BankAccount {
+  EASYPAISA
+  JAZZCASH
+  BANK_ACCOUNT
+  OTHER
+
+  @@map("bank_account")
+}
+
 enum ProductCategory {
   BEDS
   CHAIRS
   TABLES
   SOFAS
+  DRESSER
+  OTHER
   WARDROBES
   DINING_SETS
   OFFICE_FURNITURE
   DECORATIVE_ITEMS
   LIGHTING
   STORAGE
-  DRESSER
-  OTHER
 
   @@map("product_category")
 }
@@ -235,6 +258,7 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   PAYMENT_PENDING
+  PARTIALLY_DELIVERED
 
   @@map("order_status")
 }
@@ -252,4 +276,13 @@ enum PaymentType {
   REFERRAL
 
   @@map("payment_type")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+
+  @@map("message_type")
 }

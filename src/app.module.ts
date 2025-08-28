@@ -17,6 +17,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { UploadModule } from './upload/upload.module';
 import { UserAnalyticsModule } from './user-analytics/user-analytics.module';
 import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
     UploadModule,
     UserAnalyticsModule,
     AdminAnalyticsModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
