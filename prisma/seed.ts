@@ -1,376 +1,241 @@
 import { PrismaClient } from '@prisma/client';
-import {
-  User,
-  Profile,
-  Product,
-  OrderRequest,
-  Payment,
-  Referral,
-  Role,
-  BankAccount,
-  ProductCategory,
-  ProductCondition,
-  OrderStatus,
-  PaymentStatus,
-  PaymentType,
-} from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-// Utility functions for data generation
-function generateReferralCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
+async function main() {
+  console.log('🌱 Starting database seeding...');
 
-function generateRandomPrice(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function getRandomEnum<T extends Record<string, string | number>>(
-  enumObject: T,
-): T[keyof T] {
-  const values = Object.values(enumObject) as T[keyof T][];
-  return values[Math.floor(Math.random() * values.length)];
-}
-
-function generatePhoneNumber(): string {
-  return `+92${Math.floor(Math.random() * 9000000000) + 1000000000}`;
-}
-
-function generateWhatsAppNumber(): string {
-  return `+92${Math.floor(Math.random() * 9000000000) + 1000000000}`;
-}
-
-function getRandomElement<T>(array: T[]): T {
-  return array[Math.floor(Math.random() * array.length)];
-}
-
-// Hash password utility
-async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
-}
-
-// Seed function declarations with proper types
-async function seedUsers(): Promise<User[]> {
-  console.log('👤 Seeding users...');
-
-  const usersData = [
-    {
-      email: 'admin@example.com',
-      password: await hashPassword('admin123'),
-      firstName: 'Admin',
-      lastName: 'User',
-      role: Role.ADMIN,
-      isVerified: true,
-    },
-    {
-      email: 'user1@example.com',
-      password: await hashPassword('password1'),
-      firstName: 'John',
-      lastName: 'Doe',
-      role: Role.USER,
-      isVerified: true,
-    },
-    {
-      email: 'user2@example.com',
-      password: await hashPassword('password2'),
-      firstName: 'Jane',
-      lastName: 'Smith',
-      role: Role.USER,
-      isVerified: true,
-    },
-    {
-      email: 'user3@example.com',
-      password: await hashPassword('password3'),
-      firstName: 'Alice',
-      lastName: 'Johnson',
-      role: Role.USER,
-      isVerified: true,
-    },
-  ];
-
-  const users: User[] = [];
-  for (const userData of usersData) {
-    const user = await prisma.user.create({
-      data: userData,
-    });
-    users.push(user);
-  }
-
-  console.log(`✅ Created ${users.length} users`);
-  return users;
-}
-
-async function seedProfiles(users: User[]): Promise<Profile[]> {
-  console.log('👤 Seeding profiles...');
-
-  const profiles: Profile[] = [];
-  for (const user of users) {
-    const firstName = user.firstName || 'User';
-    const lastName = user.lastName || 'Profile';
-
-    const profile = await prisma.profile.create({
-      data: {
-        userId: user.id,
-        fullName: `${firstName} ${lastName}`,
-        address: `Address for ${firstName} ${lastName}`,
-        whatsappNumber: generateWhatsAppNumber(),
-        bankAccount: getRandomEnum(BankAccount),
-        facebookLink: `https://facebook.com/${firstName.toLowerCase()}.${lastName.toLowerCase()}`,
-        dubizzleLink: `https://dubizzle.com/users/${user.id}`,
-        verified: user.role === Role.ADMIN || Math.random() > 0.5, // Admins always verified, others 50% chance
-        referralCode: generateReferralCode(),
-        referredBy: user.role === Role.ADMIN ? undefined : users[0].id, // Regular users referred by admin
-      },
-    });
-    profiles.push(profile);
-  }
-
-  console.log(`✅ Created ${profiles.length} profiles`);
-  return profiles;
-}
-
-async function seedProducts(users: User[]): Promise<Product[]> {
-  console.log('🛋️ Seeding products...');
-
-  const productsData = [
-    {
-      title: 'Comfortable Sofa',
-      category: ProductCategory.SOFAS,
-      condition: ProductCondition.LIKE_NEW,
-      brand: 'IKEA',
-    },
-    {
-      title: 'Wooden Dining Table',
-      category: ProductCategory.DINING_SETS,
-      condition: ProductCondition.GOOD,
-      brand: 'HomeCenter',
-    },
-    {
-      title: 'Office Chair',
-      category: ProductCategory.OFFICE_FURNITURE,
-      condition: ProductCondition.NEW,
-      brand: 'Herman Miller',
-    },
-    {
-      title: 'King Size Bed',
-      category: ProductCategory.BEDS,
-      condition: ProductCondition.SECOND_HAND,
-      brand: 'SleepWell',
-    },
-    {
-      title: 'Wardrobe',
-      category: ProductCategory.WARDROBES,
-      condition: ProductCondition.FAIR,
-      brand: 'HomeTown',
-    },
-    {
-      title: 'Decorative Lamp',
-      category: ProductCategory.DECORATIVE_ITEMS,
-      condition: ProductCondition.NEW,
-      brand: 'Philips',
-    },
-  ];
-
-  const products: Product[] = [];
-  for (const productData of productsData) {
-    const owner = getRandomElement(users.filter((u) => u.role === Role.USER)); // Only regular users can own products
-    const product = await prisma.product.create({
-      data: {
-        ownerId: owner.id,
-        title: productData.title,
-        description: `Description for ${productData.title}`,
-        price: generateRandomPrice(1000, 50000),
-        category: productData.category,
-        condition: productData.condition,
-        photos: [
-          `https://example.com/photos/${productData.title.toLowerCase().replace(/ /g, '-')}.jpg`,
-        ],
-        brand: productData.brand,
-        colors: ['Black', 'White', 'Brown'],
-        location: 'Karachi, Pakistan',
-        material: 'Wood',
-        productTags: ['furniture', 'home'],
-        quantity: 1,
-      },
-    });
-    products.push(product);
-  }
-
-  console.log(`✅ Created ${products.length} products`);
-  return products;
-}
-
-async function seedOrderRequests(
-  users: User[],
-  products: Product[],
-): Promise<OrderRequest[]> {
-  console.log('📦 Seeding order requests...');
-
-  const orders: OrderRequest[] = [];
-  for (let i = 0; i < 10; i++) {
-    const user = getRandomElement(users.filter((u) => u.role === Role.USER));
-    const product = getRandomElement(products);
-
-    const order = await prisma.orderRequest.create({
-      data: {
-        userId: user.id,
-        productId: product.id,
-        platform: getRandomElement([
-          'Website',
-          'Facebook',
-          'Instagram',
-          'WhatsApp',
-        ]),
-        decidedPrice: product.price,
-        advancePayment: Math.random() > 0.5,
-        customerName: `${user.firstName} ${user.lastName}`,
-        customerPhone: generatePhoneNumber(),
-        customerWhatsapp: generateWhatsAppNumber(),
-        customerEmail: user.email,
-        customerNotes: `Order notes for ${product.title}`,
-        deliveringDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-        status: getRandomEnum(OrderStatus),
-      },
-    });
-    orders.push(order);
-  }
-
-  console.log(`✅ Created ${orders.length} order requests`);
-  return orders;
-}
-
-async function seedPayments(
-  orders: OrderRequest[],
-  users: User[],
-): Promise<Payment[]> {
-  console.log('💰 Seeding payments...');
-
-  const payments: Payment[] = [];
-  for (const order of orders) {
-    const user = users.find((u) => u.id === order.userId);
-    if (!user) continue;
-
-    // 30% chance of having a referral
-    const hasReferral = Math.random() < 0.3;
-    const referrer = hasReferral
-      ? getRandomElement(users.filter((u) => u.id !== user.id))
-      : undefined;
-
-    const payment = await prisma.payment.create({
-      data: {
-        orderRequestId: order.id,
-        userId: user.id,
-        userShare: Number(order.decidedPrice) * 0.8, // User gets 80%
-        referrerId: referrer?.id,
-        referrerShare: referrer ? Number(order.decidedPrice) * 0.2 : null, // Referrer gets 20%
-        totalPrice: order.decidedPrice,
-        proofScreenshotUrl: `https://example.com/payments/${order.id}.png`,
-        status: getRandomEnum(PaymentStatus),
-        paymentType: referrer ? PaymentType.REFERRAL : PaymentType.SELLER,
-      },
-    });
-    payments.push(payment);
-  }
-
-  console.log(`✅ Created ${payments.length} payments`);
-  return payments;
-}
-
-async function seedReferrals(users: User[]): Promise<Referral[]> {
-  console.log('👥 Seeding referrals...');
-
-  const referrals: Referral[] = [];
-  // Create some referral relationships
-  for (let i = 0; i < 5; i++) {
-    const referrer = getRandomElement(users);
-    // Find a user who is not the referrer and not already referred by this referrer
-    const referee = getRandomElement(
-      users.filter(
-        (u) =>
-          u.id !== referrer.id &&
-          !referrals.some(
-            (r) => r.referrerId === referrer.id && r.refereeId === u.id,
-          ),
-      ),
-    );
-
-    if (!referee) continue;
-
-    const referral = await prisma.referral.create({
-      data: {
-        referrerId: referrer.id,
-        refereeId: referee.id,
-      },
-    });
-    referrals.push(referral);
-  }
-
-  console.log(`✅ Created ${referrals.length} referrals`);
-  return referrals;
-}
-
-// Optional: Clear existing data
-async function clearDatabase() {
-  console.log('🧹 Clearing existing data...');
-
-  // Delete in correct order to avoid foreign key constraints
+  // Clear existing data
   await prisma.payment.deleteMany();
   await prisma.orderRequest.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.conversation.deleteMany();
   await prisma.product.deleteMany();
   await prisma.referral.deleteMany();
   await prisma.profile.deleteMany();
   await prisma.user.deleteMany();
 
-  console.log('✅ Database cleared');
-}
+  console.log('🧹 Cleared existing data');
 
-// Main seeding function
-async function main() {
-  try {
-    console.log('🌱 Starting database seeding...');
+  const hashedPassword = await bcrypt.hash('password123', 10);
 
-    // Test database connection
-    await prisma.$connect();
-    console.log('✅ Database connection established');
+  // Create Admin
+  const admin = await prisma.user.create({
+    data: {
+      email: 'admin@furniture.com',
+      password: hashedPassword,
+      firstName: 'Admin',
+      lastName: 'User',
+      role: 'ADMIN',
+      isVerified: true,
+    },
+  });
 
-    // Clear existing data (optional - uncomment if needed)
-    // await clearDatabase();
+  // Create Manager
+  const manager = await prisma.user.create({
+    data: {
+      email: 'manager@furniture.com',
+      password: hashedPassword,
+      firstName: 'Manager',
+      lastName: 'User',
+      role: 'REFERRAL_MANAGER',
+      isVerified: true,
+    },
+  });
 
-    // Execute seeding functions in order
-    const users = await seedUsers();
-    const profiles = await seedProfiles(users);
-    const products = await seedProducts(users);
-    const orders = await seedOrderRequests(users, products);
-    const payments = await seedPayments(orders, users);
-    const referrals = await seedReferrals(users);
-
-    // Log summary
-    console.log('\n📊 Seeding Summary:');
-    console.log(`👤 Users: ${users.length}`);
-    console.log(`👤 Profiles: ${profiles.length}`);
-    console.log(`🛋️ Products: ${products.length}`);
-    console.log(`📦 Orders: ${orders.length}`);
-    console.log(`💰 Payments: ${payments.length}`);
-    console.log(`👥 Referrals: ${referrals.length}`);
-
-    console.log('\n🎉 Database seeding completed successfully!');
-  } catch (error) {
-    console.error('❌ Error during seeding:', error);
-    throw error;
-  } finally {
-    await prisma.$disconnect();
+  // Create 10 regular users
+  const users: any[] = [];
+  for (let i = 1; i <= 10; i++) {
+    const user = await prisma.user.create({
+      data: {
+        email: `user${i}@example.com`,
+        password: hashedPassword,
+        firstName: `User${i}`,
+        lastName: 'Test',
+        role: 'USER',
+        isVerified: i <= 8, // 2 unverified users
+        lastLogin: i <= 8 ? new Date() : null,
+      },
+    });
+    users.push(user);
   }
+
+  console.log('👥 Created users');
+
+  // Create profiles
+  await prisma.profile.create({
+    data: {
+      userId: admin.id,
+      fullName: 'Admin User',
+      address: 'Admin Street, Karachi',
+      whatsappNumber: '+923001234567',
+      bankAccount: 'BANK_ACCOUNT',
+      verified: true,
+      referralCode: 'ADMIN001',
+    },
+  });
+
+  await prisma.profile.create({
+    data: {
+      userId: manager.id,
+      fullName: 'Manager User',
+      address: 'Manager Avenue, Lahore',
+      whatsappNumber: '+923009876543',
+      bankAccount: 'EASYPAISA',
+      verified: true,
+      referralCode: 'MANAGER001',
+    },
+  });
+
+  for (let i = 0; i < users.length; i++) {
+    await prisma.profile.create({
+      data: {
+        userId: users[i].id,
+        fullName: `User${i + 1} Test`,
+        address: `Address ${i + 1}, City`,
+        whatsappNumber: `+92300${String(i + 1).padStart(7, '0')}`,
+        bankAccount: ['EASYPAISA', 'JAZZCASH', 'BANK_ACCOUNT'][i % 3] as any,
+        verified: i < 8,
+        referralCode: `USER${String(i + 1).padStart(3, '0')}`,
+        referredBy: i > 0 && i < 5 ? users[0].id : null, // First 4 users referred by user1
+      },
+    });
+  }
+
+  console.log('📋 Created profiles');
+
+  // Create referrals
+  for (let i = 1; i < 5; i++) {
+    await prisma.referral.create({
+      data: {
+        referrerId: users[0].id,
+        refereeId: users[i].id,
+      },
+    });
+  }
+
+  console.log('🔗 Created referrals');
+
+  // Create products
+  const categories = ['BEDS', 'CHAIRS', 'TABLES', 'SOFAS', 'WARDROBES'];
+  const conditions = ['NEW', 'LIKE_NEW', 'GOOD', 'FAIR'];
+  const products: any[] = [];
+
+  for (let i = 0; i < 20; i++) {
+    const product = await prisma.product.create({
+      data: {
+        ownerId: users[i % users.length].id,
+        title: `Product ${i + 1}`,
+        description: `Description for product ${i + 1}`,
+        price: parseFloat((Math.random() * 100000 + 10000).toFixed(2)),
+        category: categories[i % categories.length] as any,
+        condition: conditions[i % conditions.length] as any,
+        photos: [`https://example.com/photo${i + 1}.jpg`],
+        brand: `Brand${(i % 5) + 1}`,
+        colors: [['Red', 'Blue', 'Green'][i % 3]],
+        location: ['Karachi', 'Lahore', 'Islamabad'][i % 3],
+        material: ['Wood', 'Metal', 'Fabric'][i % 3],
+        productTags: [`tag${i + 1}`],
+        quantity: Math.floor(Math.random() * 5) + 1,
+        sku: `SKU-${String(i + 1).padStart(3, '0')}`,
+      },
+    });
+    products.push(product);
+  }
+
+  console.log('🛋️ Created products');
+
+  // Create order requests
+  for (let i = 0; i < 10; i++) {
+    await prisma.orderRequest.create({
+      data: {
+        userId: users[i % users.length].id,
+        productId: products[i].id,
+        platform: ['Facebook', 'Dubizzle', 'WhatsApp'][i % 3],
+        decidedPrice: parseFloat(products[i].price.toString()),
+        customerName: `Customer ${i + 1}`,
+        customerPhone: `+92300${String(i + 1).padStart(7, '0')}`,
+        customerWhatsapp: `+92300${String(i + 1).padStart(7, '0')}`,
+        customerEmail: `customer${i + 1}@example.com`,
+        status: ['PENDING', 'CONFIRMED', 'DELIVERED'][i % 3] as any,
+        productName: products[i].title,
+        productDescription: products[i].description,
+      },
+    });
+  }
+
+  console.log('📦 Created orders');
+
+  // Create conversations
+  for (let i = 0; i < 5; i++) {
+    const conversation = await prisma.conversation.create({
+      data: {
+        user1Id: users[i].id,
+        user2Id: users[i + 1].id,
+      },
+    });
+
+    // Create messages
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: users[i].id,
+        content: `Hello from user ${i + 1}`,
+        isRead: true,
+      },
+    });
+
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: users[i + 1].id,
+        content: `Reply from user ${i + 2}`,
+        isRead: false,
+      },
+    });
+  }
+
+  console.log('💬 Created conversations and messages');
+
+  // Create some payments for completed orders
+  const orderRequests = await prisma.orderRequest.findMany();
+  for (let i = 0; i < 5; i++) {
+    await prisma.payment.create({
+      data: {
+        orderRequestId: orderRequests[i].id,
+        userId: orderRequests[i].userId,
+        userShare: parseFloat((Math.random() * 50000 + 10000).toFixed(2)),
+        totalPrice: parseFloat(orderRequests[i].decidedPrice.toString()),
+        status: ['PENDING', 'PAID'][i % 2] as any,
+        paymentType: 'SELLER',
+      },
+    });
+  }
+
+  console.log('💰 Created payments');
+
+  // Summary
+  const counts = {
+    users: await prisma.user.count(),
+    profiles: await prisma.profile.count(),
+    products: await prisma.product.count(),
+    orders: await prisma.orderRequest.count(),
+    conversations: await prisma.conversation.count(),
+    messages: await prisma.message.count(),
+    referrals: await prisma.referral.count(),
+  };
+
+  console.log('\n🎉 Seeding completed!');
+  console.log('📊 Summary:', counts);
+  console.log('\n🔐 Login: admin@furniture.com / password123');
 }
 
-// Execute the main function
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error('❌ Error:', e);
+    process.exit(1);
+  })
+  .finally(() => {
+    return prisma.$disconnect();
+  });

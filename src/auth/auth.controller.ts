@@ -491,44 +491,44 @@ export class AuthController {
     return this.authService.registerWithGoogle(req.user as GoogleUser);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get user profile',
-    description: 'Returns authenticated user profile information',
-  })
-  @ApiOkResponse({
-    description: 'User profile retrieved successfully',
-    schema: {
-      example: {
-        id: 1,
-        email: 'user@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
-        role: 'USER',
-        isVerified: true,
-        avatar: null,
-        googleId: null,
-        lastLogin: '2024-01-15T10:30:00.000Z',
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-      },
-    },
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Invalid or missing access token',
-    schema: {
-      example: {
-        statusCode: 401,
-        message: 'Unauthorized',
-        error: 'Unauthorized',
-      },
-    },
-  })
-  getProfile(@GetUser() user: User): Omit<User, 'password' | 'refreshToken'> {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, refreshToken, ...userProfile } = user;
-    return userProfile;
-  }
+  // @UseGuards(JwtAuthGuard)
+  // @Get('profile')
+  // @ApiBearerAuth()
+  // @ApiOperation({
+  //   summary: 'Get user profile',
+  //   description: 'Returns authenticated user profile information',
+  // })
+  // @ApiOkResponse({
+  //   description: 'User profile retrieved successfully',
+  //   schema: {
+  //     example: {
+  //       id: 1,
+  //       email: 'user@example.com',
+  //       firstName: 'John',
+  //       lastName: 'Doe',
+  //       role: 'USER',
+  //       isVerified: true,
+  //       avatar: null,
+  //       googleId: null,
+  //       lastLogin: '2024-01-15T10:30:00.000Z',
+  //       createdAt: '2024-01-01T00:00:00.000Z',
+  //       updatedAt: '2024-01-15T10:30:00.000Z',
+  //     },
+  //   },
+  // })
+  // @ApiUnauthorizedResponse({
+  //   description: 'Invalid or missing access token',
+  //   schema: {
+  //     example: {
+  //       statusCode: 401,
+  //       message: 'Unauthorized',
+  //       error: 'Unauthorized',
+  //     },
+  //   },
+  // })
+  // getProfile(@GetUser() user: User): Omit<User, 'password' | 'refreshToken'> {
+  //   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  //   const { password, refreshToken, ...userProfile } = user;
+  //   return userProfile;
+  // }
 }

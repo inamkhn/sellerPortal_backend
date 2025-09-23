@@ -18,12 +18,15 @@ import { UploadModule } from './upload/upload.module';
 import { UserAnalyticsModule } from './user-analytics/user-analytics.module';
 import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
 import { ChatModule } from './chat/chat.module';
+import { FacebookIntegrationModule } from './facebook-integration/facebook-integration.module';
+import facebookConfig from './facebook-integration/config/facebook.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      load: [facebookConfig],
     }),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
@@ -91,6 +94,7 @@ import { ChatModule } from './chat/chat.module';
     UserAnalyticsModule,
     AdminAnalyticsModule,
     ChatModule,
+    FacebookIntegrationModule,
   ],
 })
 export class AppModule {}

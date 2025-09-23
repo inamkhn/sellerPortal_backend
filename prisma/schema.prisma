@@ -2,6 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Add seed configuration
+// Run with: npm run prisma:seed
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -51,6 +54,7 @@ model Profile {
   address        String?
   whatsappNumber String?      @map("whatsapp_number")
   bankAccount    BankAccount? @map("bank_account")
+  accountNumber  String?      @map("account_number")
   facebookLink   String?      @map("facebook_link")
   dubizzleLink   String?      @map("dubizzle_link")
   verified       Boolean      @default(false)
@@ -59,7 +63,6 @@ model Profile {
   listedProducts String[]     @default([]) @map("listed_products")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
-  accountNumber  String?      @map("account_number")
   referrer       User?        @relation("ReferredByRelation", fields: [referredBy], references: [id])
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -84,30 +87,35 @@ model Referral {
 }
 
 model Product {
-  id            Int              @id @default(autoincrement())
-  ownerId       Int              @map("owner_id")
-  title         String
-  description   String?
-  price         Decimal          @db.Decimal(10, 2)
-  category      ProductCategory
-  condition     ProductCondition
-  photos        String[]         @default([])
-  brand         String?
-  colors        String[]         @default([])
-  location      String?
-  material      String?
-  productTags   String[]         @default([]) @map("product_tags")
-  quantity      Int              @default(1)
-  sku           String?          @unique
-  createdAt     DateTime         @default(now()) @map("created_at")
-  orderRequests OrderRequest[]
-  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id                    Int                   @id @default(autoincrement())
+  ownerId               Int                   @map("owner_id")
+  title                 String
+  description           String?
+  price                 Decimal               @db.Decimal(10, 2)
+  category              ProductCategory
+  condition             ProductCondition
+  photos                String[]              @default([])
+  brand                 String?
+  colors                String[]              @default([])
+  location              String?
+  material              String?
+  productTags           String[]              @default([]) @map("product_tags")
+  quantity              Int                   @default(1)
+  sku                   String?               @unique
+  facebookPostingStatus FacebookPostingStatus @default(NOT_POSTED) @map("facebook_posting_status")
+  facebookListingUrl    String?               @map("facebook_listing_url")
+  facebookLastPosted    DateTime?             @map("facebook_last_posted")
+  facebookRetryCount    Int                   @default(0) @map("facebook_retry_count")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  orderRequests         OrderRequest[]
+  owner                 User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
   @@index([category])
   @@index([condition])
   @@index([title])
   @@index([price])
+  @@index([facebookPostingStatus])
   @@map("products")
 }
 
@@ -135,6 +143,7 @@ model OrderRequest {
   advance_pay        String?
   platform_Cost      String?
   product_Cost       String?
+  Manager_Cost       String? // referral manager share will get only if the order is from referral
   product            Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   payments           Payment[]
@@ -285,4 +294,14 @@ enum MessageType {
   SYSTEM
 
   @@map("message_type")
+}
+
+enum FacebookPostingStatus {
+  NOT_POSTED
+  POSTING
+  POSTED
+  FAILED
+  NEEDS_UPDATE
+
+  @@map("facebook_posting_status")
 }

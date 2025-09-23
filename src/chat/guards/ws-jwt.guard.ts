@@ -4,6 +4,18 @@ import { WsException } from '@nestjs/websockets';
 import { Socket } from 'socket.io';
 import { PrismaService } from '../../database/database.service';
 
+interface AuthenticatedSocket extends Socket {
+  data: {
+    user?: {
+      id: number;
+      email: string;
+      role: string;
+      firstName: string | null;
+      lastName: string | null;
+    };
+  };
+}
+
 @Injectable()
 export class WsJwtGuard implements CanActivate {
   constructor(
@@ -13,7 +25,9 @@ export class WsJwtGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     try {
-      const client: Socket = context.switchToWs().getClient<Socket>();
+      const client: AuthenticatedSocket = context
+        .switchToWs()
+        .getClient<AuthenticatedSocket>();
       const token = this.extractTokenFromHandshake(client);
 
       if (!token) {
@@ -21,6 +35,11 @@ export class WsJwtGuard implements CanActivate {
       }
 
       const payload = this.jwtService.verify(token);
+
+      if (!payload.sub || typeof payload.sub !== 'number') {
+        throw new WsException('Invalid token payload');
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: {
@@ -39,13 +58,18 @@ export class WsJwtGuard implements CanActivate {
       client.data.user = user;
       return true;
     } catch (error) {
-      throw new WsException('Unauthorized');
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unauthorized';
+      throw new WsException(errorMessage);
     }
   }
 
-  private extractTokenFromHandshake(client: Socket): string | undefined {
+  private extractTokenFromHandshake(
+    client: AuthenticatedSocket,
+  ): string | undefined {
     const token =
-      client.handshake.auth?.token || client.handshake.headers?.authorization;
+      (client.handshake.auth?.token as string | undefined) ||
+      client.handshake.headers?.authorization;
 
     if (typeof token === 'string') {
       return token.startsWith('Bearer ') ? token.substring(7) : token;

@@ -469,10 +469,10 @@ export class AuthService {
   }
 
   // Get user by ID (for JWT strategy)
-  async getUserById(id: number): Promise<User | null> {
-    return this.prisma.user.findUnique({
-      where: { id },
-      include: { profile: true },
-    });
-  }
+  // async getUserById(id: number): Promise<User | null> {
+  //   return this.prisma.user.findUnique({
+  //     where: { id },
+  //     include: { profile: true },
+  //   });
+  // }
 }
