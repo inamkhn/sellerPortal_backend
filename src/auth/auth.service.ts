@@ -9,13 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/database.service';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 
 import { RegisterDto, LoginDto } from './dto';
 import {
   AuthResponse,
   TokenPayload,
-  RefreshTokenPayload,
 } from './interfaces/auth-response.interface';
 import { GoogleUser } from './strategies/google.strategy';
 import { EmailService } from '../common/services/email.service';
@@ -33,7 +31,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) {}
+  ) { }
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -49,36 +47,19 @@ export class AuthService {
   }
 
   // JWT token generation
-  async generateTokens(
-    user: User,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  async generateAccessToken(user: User): Promise<string> {
     const payload: TokenPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
 
-    const refreshTokenId = uuidv4();
-    const refreshPayload: RefreshTokenPayload = {
-      sub: user.id,
-      tokenId: refreshTokenId,
-    };
-
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      secret:
-        this.configService.get<string>('REFRESH_TOKEN_SECRET') ||
-        'refresh-secret',
-      expiresIn: '7d',
+    // Generate access token with longer expiry since no refresh token
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN') || '24h'
     });
 
-    // Store refresh token in database
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken },
-    });
-
-    return { accessToken, refreshToken };
+    return accessToken;
   }
 
   // User registration
@@ -114,8 +95,8 @@ export class AuthService {
       },
     });
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
+    // Generate access token
+    const accessToken = await this.generateAccessToken(user);
 
     // Send verification email
     try {
@@ -138,7 +119,9 @@ export class AuthService {
         role: user.role,
         isVerified: user.isVerified,
       },
-      tokens,
+      tokens: {
+        accessToken,
+      },
     };
   }
 
@@ -170,8 +153,8 @@ export class AuthService {
       data: { lastLogin: new Date() },
     });
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
+    // Generate access token
+    const accessToken = await this.generateAccessToken(user);
 
     return {
       user: {
@@ -182,7 +165,9 @@ export class AuthService {
         role: user.role,
         isVerified: user.isVerified,
       },
-      tokens,
+      tokens: {
+        accessToken,
+      },
     };
   }
 
@@ -229,8 +214,8 @@ export class AuthService {
       });
     }
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
+    // Generate access token
+    const accessToken = await this.generateAccessToken(user);
 
     return {
       user: {
@@ -241,59 +226,23 @@ export class AuthService {
         role: user.role,
         isVerified: user.isVerified,
       },
-      tokens,
+      tokens: {
+        accessToken,
+      },
     };
   }
 
-  // Refresh tokens
-  async refreshTokens(refreshToken: string): Promise<AuthResponse> {
-    try {
-      const payload = this.jwtService.verify(refreshToken, {
-        secret:
-          this.configService.get<string>('REFRESH_TOKEN_SECRET') ||
-          'refresh-secret',
-      });
-
-      // Find user and verify refresh token
-      const user = await this.prisma.user.findUnique({
-        where: {
-          id: payload.sub,
-          refreshToken,
-        },
-      });
-
-      if (!user) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      // Generate new tokens
-      const tokens = await this.generateTokens(user);
-
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName || undefined,
-          lastName: user.lastName || undefined,
-          role: user.role,
-          isVerified: user.isVerified,
-        },
-        tokens,
-      };
-    } catch {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-  }
-
   // Logout
-  async logout(userId: number, refreshToken: string): Promise<void> {
+  async logout(userId: number): Promise<void> {
+    // Update last login to track logout activity
     await this.prisma.user.update({
-      where: {
-        id: userId,
-        refreshToken,
-      },
-      data: { refreshToken: null },
+      where: { id: userId },
+      data: { lastLogin: new Date() },
     });
+
+    // Since we're using stateless JWT tokens, there's no server-side session to invalidate
+    // This method is mainly for logging purposes and future extensibility
+    // The client should discard the JWT token on their side
   }
 
   // Email verification with OTP
@@ -445,14 +394,13 @@ export class AuthService {
     // Hash new password
     const hashedPassword = await this.hashPassword(newPassword);
 
-    // Update password and clear reset OTP, also invalidate all refresh tokens
+    // Update password and clear reset OTP
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
         passwordResetOtp: null,
         passwordResetExpiry: null,
-        refreshToken: null, // Invalidate all sessions
       },
     });
 

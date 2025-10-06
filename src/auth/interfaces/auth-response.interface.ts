@@ -11,7 +11,6 @@ export interface AuthResponse {
   };
   tokens: {
     accessToken: string;
-    refreshToken: string;
   };
 }
 
@@ -19,13 +18,6 @@ export interface TokenPayload {
   sub: number;
   email: string;
   role: Role;
-  iat?: number;
-  exp?: number;
-}
-
-export interface RefreshTokenPayload {
-  sub: number;
-  tokenId: string;
   iat?: number;
   exp?: number;
 }

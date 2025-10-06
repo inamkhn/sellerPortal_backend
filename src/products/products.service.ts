@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
-import { Product, Prisma } from '@prisma/client';
+import { Product, Prisma, ProductCategory, ProductCondition } from '@prisma/client';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto';
 import { UploadService } from '../upload/upload.service';
 import { ProfileService } from '../profile/profile.service';
@@ -33,7 +33,7 @@ export class ProductsService {
     private prisma: PrismaService,
     private uploadService: UploadService,
     private profileService: ProfileService,
-  ) {}
+  ) { }
 
   async create(
     userId: number,
@@ -326,6 +326,51 @@ export class ProductsService {
     await this.prisma.product.delete({
       where: { id },
     });
+  }
+
+  getCategories(): { value: string; label: string }[] {
+    // Create a mapping of enum values to display labels
+    const categoryLabels: Record<ProductCategory, string> = {
+      [ProductCategory.BEDS]: 'Beds',
+      [ProductCategory.CHAIRS]: 'Chairs',
+      [ProductCategory.TABLES]: 'Tables',
+      [ProductCategory.SOFAS]: 'Sofas',
+      [ProductCategory.DRESSER]: 'Dresser',
+      [ProductCategory.WARDROBES]: 'Wardrobes',
+      [ProductCategory.DINING_SETS]: 'Dining Sets',
+      [ProductCategory.OFFICE_FURNITURE]: 'Office Furniture',
+      [ProductCategory.DECORATIVE_ITEMS]: 'Decorative Items',
+      [ProductCategory.LIGHTING]: 'Lighting',
+      [ProductCategory.STORAGE]: 'Storage',
+      [ProductCategory.OTHER]: 'Other',
+    };
+
+    // Get all enum values and map them to the desired format
+    const categories = Object.values(ProductCategory).map((category) => ({
+      value: category,
+      label: categoryLabels[category],
+    }));
+
+    return categories;
+  }
+
+  getConditions(): Array<{ value: string; label: string }> {
+    // Create a mapping of enum values to display labels
+    const conditionLabels: Record<ProductCondition, string> = {
+      [ProductCondition.NEW]: 'New',
+      [ProductCondition.LIKE_NEW]: 'Like New',
+      [ProductCondition.GOOD]: 'Good',
+      [ProductCondition.FAIR]: 'Fair',
+      [ProductCondition.SECOND_HAND]: 'Second Hand',
+    };
+
+    // Get all enum values and map them to the desired format
+    const conditions = Object.values(ProductCondition).map((condition) => ({
+      value: condition,
+      label: conditionLabels[condition],
+    }));
+
+    return conditions;
   }
 
   async getProductStats(): Promise<{

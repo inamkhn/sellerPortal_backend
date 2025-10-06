@@ -29,7 +29,6 @@ import {
   ResetPasswordDto,
   VerifyEmailDto,
   ForgotPasswordDto,
-  RefreshTokenDto,
 } from './dto';
 import { AuthResponse } from './interfaces/auth-response.interface';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -43,7 +42,7 @@ import { GoogleUser } from './strategies/google.strategy';
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   @Public()
   @Post('register')
@@ -73,10 +72,6 @@ export class AuthController {
           type: 'object',
           properties: {
             accessToken: {
-              type: 'string',
-              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-            },
-            refreshToken: {
               type: 'string',
               example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
             },
@@ -118,7 +113,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'User login',
     description:
-      'Authenticates user with email and password, returns access and refresh tokens',
+      'Authenticates user with email and password, returns access token',
   })
   @ApiOkResponse({
     description: 'User successfully logged in',
@@ -140,10 +135,6 @@ export class AuthController {
           type: 'object',
           properties: {
             accessToken: {
-              type: 'string',
-              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-            },
-            refreshToken: {
               type: 'string',
               example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
             },
@@ -179,83 +170,21 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
-  @Public()
-  @Post('refresh')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Refresh access token',
-    description:
-      'Generates new access and refresh tokens using a valid refresh token',
-  })
-  @ApiOkResponse({
-    description: 'Tokens successfully refreshed',
-    schema: {
-      type: 'object',
-      properties: {
-        user: {
-          type: 'object',
-          properties: {
-            id: { type: 'number', example: 1 },
-            email: { type: 'string', example: 'user@example.com' },
-            firstName: { type: 'string', example: 'John' },
-            lastName: { type: 'string', example: 'Doe' },
-            role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
-            isVerified: { type: 'boolean', example: true },
-          },
-        },
-        tokens: {
-          type: 'object',
-          properties: {
-            accessToken: {
-              type: 'string',
-              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-            },
-            refreshToken: {
-              type: 'string',
-              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-            },
-          },
-        },
-      },
-    },
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Invalid or expired refresh token',
-    schema: {
-      example: {
-        statusCode: 401,
-        message: 'Invalid refresh token',
-        error: 'Unauthorized',
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description: 'Missing refresh token',
-    schema: {
-      example: {
-        statusCode: 400,
-        message: ['Refresh token is required'],
-        error: 'Bad Request',
-      },
-    },
-  })
-  async refreshTokens(
-    @Body() refreshTokenDto: RefreshTokenDto,
-  ): Promise<AuthResponse> {
-    const { refreshToken } = refreshTokenDto;
-    return this.authService.refreshTokens(refreshToken);
-  }
-
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'User logout',
-    description: 'Invalidates the refresh token and logs out the user',
+    description: 'Logs out the user. Since we use stateless JWT tokens, this endpoint is mainly for client-side cleanup and logging purposes.',
   })
-  @ApiNoContentResponse({
+  @ApiOkResponse({
     description: 'User successfully logged out',
+    schema: {
+      example: {
+        message: 'Logged out successfully',
+      },
+    },
   })
   @ApiUnauthorizedResponse({
     description: 'Invalid or missing access token',
@@ -267,25 +196,12 @@ export class AuthController {
       },
     },
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        refreshToken: {
-          type: 'string',
-          description: 'Refresh token to invalidate',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        },
-      },
-      required: ['refreshToken'],
-    },
-  })
-  async logout(
-    @GetUser() user: User,
-    @Body('refreshToken') refreshToken: string,
-  ): Promise<void> {
-    return this.authService.logout(user.id, refreshToken);
+  async logout(@GetUser() user: User): Promise<{ message: string }> {
+    await this.authService.logout(user.id);
+    return { message: 'Logged out successfully' };
   }
+
+
 
   @Public()
   @Post('verify-email')
@@ -465,10 +381,6 @@ export class AuthController {
           type: 'object',
           properties: {
             accessToken: {
-              type: 'string',
-              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-            },
-            refreshToken: {
               type: 'string',
               example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
             },

@@ -22,7 +22,7 @@ import { EmailModule } from '../common/services/email.module';
           configService.get<string>('JWT_SECRET') ||
           'your-super-secret-jwt-key',
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '15m',
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '24h',
         },
       }),
       inject: [ConfigService],
@@ -40,4 +40,4 @@ import { EmailModule } from '../common/services/email.module';
   ],
   exports: [AuthService, JwtAuthGuard, RolesGuard],
 })
-export class AuthModule {}
+export class AuthModule { }

@@ -49,7 +49,7 @@ export class ProductsController {
   constructor(
     private productsService: ProductsService,
     private uploadService: UploadService,
-  ) {}
+  ) { }
 
   @Post()
   @UseInterceptors(
@@ -223,6 +223,63 @@ export class ProductsController {
   })
   async findAll(@Query() query: ProductQueryDto): Promise<PaginatedProducts> {
     return this.productsService.findAll(query);
+  }
+
+  @Get('categories')
+  @ApiOperation({
+    summary: 'Get all product categories',
+    description:
+      'Retrieves all available product categories with their display names',
+  })
+  @ApiOkResponse({
+    description: 'Product categories retrieved successfully',
+    schema: {
+      example: [
+        { value: 'BEDS', label: 'Beds' },
+        { value: 'CHAIRS', label: 'Chairs' },
+        { value: 'TABLES', label: 'Tables' },
+        { value: 'SOFAS', label: 'Sofas' },
+        { value: 'DRESSER', label: 'Dresser' },
+        { value: 'WARDROBES', label: 'Wardrobes' },
+        { value: 'DINING_SETS', label: 'Dining Sets' },
+        { value: 'OFFICE_FURNITURE', label: 'Office Furniture' },
+        { value: 'DECORATIVE_ITEMS', label: 'Decorative Items' },
+        { value: 'LIGHTING', label: 'Lighting' },
+        { value: 'STORAGE', label: 'Storage' },
+        { value: 'OTHER', label: 'Other' },
+      ],
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  getCategories(): { value: string; label: string }[] {
+    return this.productsService.getCategories();
+  }
+
+  @Get('conditions')
+  @ApiOperation({
+    summary: 'Get all product conditions',
+    description:
+      'Retrieves all available product conditions with their display names',
+  })
+  @ApiOkResponse({
+    description: 'Product conditions retrieved successfully',
+    schema: {
+      example: [
+        { value: 'NEW', label: 'New' },
+        { value: 'LIKE_NEW', label: 'Like New' },
+        { value: 'GOOD', label: 'Good' },
+        { value: 'FAIR', label: 'Fair' },
+        { value: 'SECOND_HAND', label: 'Second Hand' },
+      ],
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  getConditions(): { value: string; label: string }[] {
+    return this.productsService.getConditions();
   }
 
   @Get('stats')
