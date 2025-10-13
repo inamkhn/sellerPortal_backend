@@ -40,4 +40,4 @@ import { EmailModule } from '../common/services/email.module';
   ],
   exports: [AuthService, JwtAuthGuard, RolesGuard],
 })
-export class AuthModule { }
+export class AuthModule {}

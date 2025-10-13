@@ -32,13 +32,57 @@ import { User, Role } from '@prisma/client';
 
 @ApiTags('Users')
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
 @ApiBearerAuth()
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description: "Get the authenticated user's profile information",
+  })
+  @ApiOkResponse({
+    description: 'Current user profile retrieved successfully',
+    schema: {
+      example: {
+        id: 1,
+        email: 'user@example.com',
+        firstName: 'John',
+        lastName: 'Doe',
+        avatar: 'https://example.com/avatar.jpg',
+        role: 'USER',
+        isVerified: true,
+        googleId: null,
+        lastLogin: '2024-01-01T00:00:00.000Z',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        profile: {
+          id: 1,
+          fullName: 'John Doe',
+          address: '123 Main St',
+          whatsappNumber: '+1234567890',
+          bankAccount: 'EASYPAISA',
+          accountNumber: '1234567890',
+          facebookLink: 'https://facebook.com/johndoe',
+          dubizzleLink: 'https://dubizzle.com/johndoe',
+          verified: true,
+          referralCode: 'JOHN123',
+          referredBy: null,
+        },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  async getCurrentUser(@GetUser() user: User) {
+    return this.usersService.getUserById(user.id);
+  }
+
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Get all users (Admin only)',
     description:
@@ -151,7 +195,65 @@ export class UsersController {
     });
   }
 
+  @Get('roles')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Get all user roles (Admin only)',
+    description: 'Retrieves all available user roles with their display names',
+  })
+  @ApiOkResponse({
+    description: 'User roles retrieved successfully',
+    schema: {
+      example: [
+        { value: 'USER', label: 'User' },
+        { value: 'ADMIN', label: 'Admin' },
+        { value: 'REFERRAL_MANAGER', label: 'Referral Manager' },
+      ],
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Insufficient permissions - Admin role required',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  getRoles(): { value: string; label: string }[] {
+    return this.usersService.getRoles();
+  }
+
+  @Get('bank-accounts')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Get all bank account types (Admin only)',
+    description:
+      'Retrieves all available bank account types with their display names',
+  })
+  @ApiOkResponse({
+    description: 'Bank account types retrieved successfully',
+    schema: {
+      example: [
+        { value: 'EASYPAISA', label: 'EasyPaisa' },
+        { value: 'JAZZCASH', label: 'JazzCash' },
+        { value: 'BANK_ACCOUNT', label: 'Bank Account' },
+        { value: 'OTHER', label: 'Other' },
+      ],
+    },
+  })
+  @ApiForbiddenResponse({
+    description: 'Insufficient permissions - Admin role required',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  getBankAccountTypes(): { value: string; label: string }[] {
+    return this.usersService.getBankAccountTypes();
+  }
+
   @Get('stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Get user statistics (Admin only)',
     description:
@@ -191,6 +293,8 @@ export class UsersController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Get user by ID (Admin only)',
     description: 'Retrieve detailed information about a specific user',
@@ -250,6 +354,8 @@ export class UsersController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Update user (Admin only)',
     description:
@@ -305,6 +411,8 @@ export class UsersController {
   }
 
   @Put(':id/suspend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Suspend user (Admin only)',
     description: 'Suspend a user by setting isVerified to false',
@@ -342,6 +450,8 @@ export class UsersController {
   }
 
   @Put(':id/activate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Activate user (Admin only)',
     description: 'Activate a suspended user by setting isVerified to true',
@@ -379,6 +489,8 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete user (Admin only)',

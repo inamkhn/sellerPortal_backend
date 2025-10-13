@@ -2,9 +2,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Add seed configuration
-// Run with: npm run prisma:seed
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -28,9 +25,6 @@ model User {
   emailVerificationOtp    String?        @map("email_verification_otp")
   passwordResetExpiry     DateTime?      @map("password_reset_expiry")
   passwordResetOtp        String?        @map("password_reset_otp")
-  conversationsAsUser1    Conversation[] @relation("User1Conversations")
-  conversationsAsUser2    Conversation[] @relation("User2Conversations")
-  sentMessages            Message[]      @relation("SentMessages")
   orderRequests           OrderRequest[]
   paymentsAsReferrer      Payment[]      @relation("ReferrerPayments")
   payments                Payment[]
@@ -119,34 +113,45 @@ model Product {
   @@map("products")
 }
 
+model CustomProduct {
+  id             Int          @id @default(autoincrement())
+  orderRequestId Int          @unique @map("order_request_id")
+  name           String       @map("product_name")
+  description    String?      @map("product_description")
+  images         String[]     @default([]) @map("customize_images")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  orderRequest   OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+
+  @@index([orderRequestId])
+  @@map("custom_products")
+}
+
 model OrderRequest {
-  id                 Int         @id @default(autoincrement())
-  userId             Int         @map("user_id")
-  productId          Int         @map("product_id")
-  platform           String?
-  decidedPrice       Decimal     @db.Decimal(10, 2)
-  advancePayment     Boolean     @default(false) @map("advance_payment")
-  customerName       String      @map("customer_name")
-  customerPhone      String      @map("customer_phone")
-  customerWhatsapp   String      @map("customer_whatsapp")
-  customerEmail      String      @map("customer_email")
-  deliveringDate     DateTime?   @map("delivering_date")
-  deliveryAddress    String?     @map("delivery_address")
-  deliveryDate       DateTime?   @map("delivery_date")
-  status             OrderStatus @default(PENDING)
-  createdAt          DateTime    @default(now()) @map("created_at")
-  updatedAt          DateTime    @updatedAt @map("updated_at")
-  customize_images   String[]    @default([]) @map("customize_image")
-  productDescription String?     @map("product_des")
-  productName        String?     @map("product_name")
-  customerNotes      String?     @map("customer_notes")
-  advance_pay        String?
-  platform_Cost      String?
-  product_Cost       String?
-  Manager_Cost       String? // referral manager share will get only if the order is from referral
-  product            Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments           Payment[]
+  id               Int            @id @default(autoincrement())
+  userId           Int            @map("user_id")
+  productId        Int            @map("product_id")
+  platform         String?
+  decidedPrice     Decimal        @db.Decimal(10, 2)
+  advancePayment   Boolean        @default(false) @map("advance_payment")
+  customerName     String         @map("customer_name")
+  customerPhone    String         @map("customer_phone")
+  customerWhatsapp String         @map("customer_whatsapp")
+  customerEmail    String         @map("customer_email")
+  deliveringDate   DateTime?      @map("delivering_date")
+  deliveryAddress  String?        @map("delivery_address")
+  deliveryDate     DateTime?      @map("delivery_date")
+  status           OrderStatus    @default(PENDING)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  customerNotes    String?        @map("customer_notes")
+  advancePay       Decimal?       @map("advance_pay") @db.Decimal(10, 2)
+  platformCost     Decimal?       @map("platform_cost") @db.Decimal(10, 2)
+  productCost      Decimal?       @map("product_cost") @db.Decimal(10, 2)
+  customProduct    CustomProduct?
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments         Payment[]
 
   @@index([userId])
   @@index([productId])
@@ -167,6 +172,9 @@ model Payment {
   createdAt          DateTime      @default(now()) @map("created_at")
   status             PaymentStatus @default(PENDING)
   paymentType        PaymentType   @default(SELLER) @map("payment_type")
+  platformCost       Decimal?      @map("platform_cost") @db.Decimal(10, 2)
+  productCost        Decimal?      @map("product_cost") @db.Decimal(10, 2)
+  managerCommission  Decimal?      @map("manager_commission") @db.Decimal(10, 2)
   orderRequest       OrderRequest  @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
   referrer           User?         @relation("ReferrerPayments", fields: [referrerId], references: [id])
   user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -174,46 +182,9 @@ model Payment {
   @@index([orderRequestId])
   @@index([userId])
   @@index([referrerId])
+  @@index([paymentType])
+  @@index([status])
   @@map("payments")
-}
-
-model Conversation {
-  id        Int       @id @default(autoincrement())
-  user1Id   Int       @map("user1_id")
-  user2Id   Int       @map("user2_id")
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  user1     User      @relation("User1Conversations", fields: [user1Id], references: [id], onDelete: Cascade)
-  user2     User      @relation("User2Conversations", fields: [user2Id], references: [id], onDelete: Cascade)
-  messages  Message[]
-
-  @@unique([user1Id, user2Id])
-  @@index([user1Id])
-  @@index([user2Id])
-  @@index([isActive])
-  @@map("conversations")
-}
-
-model Message {
-  id             Int          @id @default(autoincrement())
-  conversationId Int          @map("conversation_id")
-  senderId       Int          @map("sender_id")
-  content        String
-  messageType    MessageType  @default(TEXT) @map("message_type")
-  attachmentUrl  String?      @map("attachment_url")
-  isRead         Boolean      @default(false) @map("is_read")
-  readAt         DateTime?    @map("read_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId])
-  @@index([senderId])
-  @@index([createdAt])
-  @@index([isRead])
-  @@map("messages")
 }
 
 enum Role {
@@ -238,13 +209,8 @@ enum ProductCategory {
   CHAIRS
   TABLES
   SOFAS
-  DRESSER
   OTHER
   WARDROBES
-  DINING_SETS
-  OFFICE_FURNITURE
-  DECORATIVE_ITEMS
-  LIGHTING
   STORAGE
 
   @@map("product_category")
@@ -285,15 +251,6 @@ enum PaymentType {
   REFERRAL
 
   @@map("payment_type")
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  FILE
-  SYSTEM
-
-  @@map("message_type")
 }
 
 enum FacebookPostingStatus {

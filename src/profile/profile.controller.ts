@@ -26,7 +26,11 @@ import {
   ApiParam,
   ApiForbiddenResponse,
 } from '@nestjs/swagger';
-import { ProfileService, ProductWithOwner } from './profile.service';
+import {
+  ProfileService,
+  ProductWithOwner,
+  MinimalProduct,
+} from './profile.service';
 import { CreateProfileDto, UpdateProfileDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -513,31 +517,15 @@ export class ProfileController {
     schema: {
       example: [
         {
-          id: 1,
-          ownerId: 1,
+          id: 41,
+          ownerId: 13,
           title: 'Comfortable Leather Sofa',
-          description:
-            'A beautiful and comfortable leather sofa perfect for your living room',
-          price: 25000.5,
+          price: '25000.5',
           category: 'SOFAS',
           condition: 'LIKE_NEW',
-          photos: [
-            'https://res.cloudinary.com/demo/image/upload/v1234567890/products/photo1.jpg',
-          ],
-          brand: 'IKEA',
-          colors: ['Brown', 'Black'],
-          location: 'Karachi, Pakistan',
-          material: 'Leather',
-          productTags: ['furniture', 'living-room'],
-          quantity: 1,
           sku: 'SOFA-001',
-          createdAt: '2024-01-01T00:00:00.000Z',
-          owner: {
-            id: 1,
-            email: 'user@example.com',
-            firstName: 'John',
-            lastName: 'Doe',
-          },
+          facebookPostingStatus: 'NOT_POSTED',
+          createdAt: '2025-10-03T18:14:02.524Z',
         },
       ],
     },
@@ -562,7 +550,7 @@ export class ProfileController {
       },
     },
   })
-  async getListedProducts(@GetUser() user: User): Promise<ProductWithOwner[]> {
+  async getListedProducts(@GetUser() user: User): Promise<MinimalProduct[]> {
     return this.profileService.getListedProducts(user.id);
   }
 

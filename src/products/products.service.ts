@@ -5,7 +5,12 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
-import { Product, Prisma, ProductCategory, ProductCondition } from '@prisma/client';
+import {
+  Product,
+  Prisma,
+  ProductCategory,
+  ProductCondition,
+} from '@prisma/client';
 import { CreateProductDto, UpdateProductDto, ProductQueryDto } from './dto';
 import { UploadService } from '../upload/upload.service';
 import { ProfileService } from '../profile/profile.service';
@@ -335,12 +340,7 @@ export class ProductsService {
       [ProductCategory.CHAIRS]: 'Chairs',
       [ProductCategory.TABLES]: 'Tables',
       [ProductCategory.SOFAS]: 'Sofas',
-      [ProductCategory.DRESSER]: 'Dresser',
       [ProductCategory.WARDROBES]: 'Wardrobes',
-      [ProductCategory.DINING_SETS]: 'Dining Sets',
-      [ProductCategory.OFFICE_FURNITURE]: 'Office Furniture',
-      [ProductCategory.DECORATIVE_ITEMS]: 'Decorative Items',
-      [ProductCategory.LIGHTING]: 'Lighting',
       [ProductCategory.STORAGE]: 'Storage',
       [ProductCategory.OTHER]: 'Other',
     };

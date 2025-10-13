@@ -17,7 +17,6 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { UploadModule } from './upload/upload.module';
 import { UserAnalyticsModule } from './user-analytics/user-analytics.module';
 import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
-import { ChatModule } from './chat/chat.module';
 import { FacebookIntegrationModule } from './facebook-integration/facebook-integration.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
@@ -93,7 +92,6 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     UploadModule,
     UserAnalyticsModule,
     AdminAnalyticsModule,
-    ChatModule,
     FacebookIntegrationModule,
   ],
 })

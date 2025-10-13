@@ -56,7 +56,7 @@ export class AuthService {
 
     // Generate access token with longer expiry since no refresh token
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN') || '24h'
+      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN') || '24h',
     });
 
     return accessToken;
@@ -243,47 +243,6 @@ export class AuthService {
     // Since we're using stateless JWT tokens, there's no server-side session to invalidate
     // This method is mainly for logging purposes and future extensibility
     // The client should discard the JWT token on their side
-  }
-
-  // Email verification with OTP
-  async verifyEmail(email: string, otp: string): Promise<void> {
-    // Validate OTP format
-    if (!isValidOTPFormat(otp, 6)) {
-      throw new BadRequestException('Invalid OTP format');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    if (!user.emailVerificationOtp) {
-      throw new BadRequestException('No verification OTP found');
-    }
-
-    if (user.emailVerificationOtp !== otp) {
-      throw new BadRequestException('Invalid verification OTP');
-    }
-
-    if (
-      !user.emailVerificationExpiry ||
-      isOTPExpired(user.emailVerificationExpiry)
-    ) {
-      throw new BadRequestException('Verification OTP has expired');
-    }
-
-    // Mark user as verified and clear verification OTP
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        isVerified: true,
-        emailVerificationOtp: null,
-        emailVerificationExpiry: null,
-      },
-    });
   }
 
   async resendVerificationEmail(email: string): Promise<void> {

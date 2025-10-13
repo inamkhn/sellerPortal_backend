@@ -18,6 +18,18 @@ export interface ProductWithOwner extends Product {
   };
 }
 
+export interface MinimalProduct {
+  id: number;
+  ownerId: number;
+  title: string;
+  price: string;
+  category: string;
+  condition: string;
+  sku: string | null;
+  facebookPostingStatus: string;
+  createdAt: Date;
+}
+
 @Injectable()
 export class ProfileService {
   constructor(private prisma: PrismaService) {}
@@ -400,7 +412,7 @@ export class ProfileService {
     return updatedProfile;
   }
 
-  async getListedProducts(userId: number): Promise<ProductWithOwner[]> {
+  async getListedProducts(userId: number): Promise<MinimalProduct[]> {
     // Check if profile exists
     const profile = await this.prisma.profile.findUnique({
       where: { userId },
@@ -420,20 +432,21 @@ export class ProfileService {
       .map((id) => parseInt(id, 10))
       .filter((id) => !isNaN(id));
 
-    // Fetch products with owner details
+    // Fetch products with minimal fields only
     const products = await this.prisma.product.findMany({
       where: {
         id: { in: productIds },
       },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
+      select: {
+        id: true,
+        ownerId: true,
+        title: true,
+        price: true,
+        category: true,
+        condition: true,
+        sku: true,
+        facebookPostingStatus: true,
+        createdAt: true,
       },
     });
 
@@ -457,7 +470,18 @@ export class ProfileService {
       });
     }
 
-    return products;
+    // Transform the response to match the desired format
+    return products.map((product) => ({
+      id: product.id,
+      ownerId: product.ownerId,
+      title: product.title,
+      price: product.price.toString(),
+      category: product.category,
+      condition: product.condition,
+      sku: product.sku,
+      facebookPostingStatus: product.facebookPostingStatus,
+      createdAt: product.createdAt,
+    }));
   }
 
   async getListedProductsByAdmin(

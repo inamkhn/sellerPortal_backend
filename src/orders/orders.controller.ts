@@ -271,6 +271,33 @@ export class OrdersController {
     return this.ordersService.findUserOrders(user.id, query);
   }
 
+  @Get('statuses')
+  @ApiOperation({
+    summary: 'Get all order statuses',
+    description:
+      'Retrieves all available order statuses with their display names',
+  })
+  @ApiOkResponse({
+    description: 'Order statuses retrieved successfully',
+    schema: {
+      example: [
+        { value: 'PENDING', label: 'Pending' },
+        { value: 'CONFIRMED', label: 'Confirmed' },
+        { value: 'IN_PROGRESS', label: 'In Progress' },
+        { value: 'DELIVERED', label: 'Delivered' },
+        { value: 'CANCELLED', label: 'Cancelled' },
+        { value: 'PAYMENT_PENDING', label: 'Payment Pending' },
+        { value: 'PARTIALLY_DELIVERED', label: 'Partially Delivered' },
+      ],
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+  })
+  getStatuses(): { value: string; label: string }[] {
+    return this.ordersService.getStatuses();
+  }
+
   @Get('stats')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)

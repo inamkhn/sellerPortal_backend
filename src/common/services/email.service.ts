@@ -70,8 +70,6 @@ export class EmailService {
     token: string,
     userName?: string,
   ): Promise<void> {
-    const verificationUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:3000')}/auth/verify-email?token=${token}`;
-
     const html = `
       <!DOCTYPE html>
       <html>
@@ -83,14 +81,16 @@ export class EmailService {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background-color: #f9f9f9; }
-            .button { 
-              display: inline-block; 
-              padding: 12px 24px; 
-              background-color: #007bff; 
-              color: white; 
-              text-decoration: none; 
-              border-radius: 5px; 
+            .token { 
+              background-color: #e9ecef; 
+              padding: 15px; 
+              border-radius: 6px; 
+              font-family: monospace; 
+              word-break: break-all; 
               margin: 20px 0; 
+              text-align: center;
+              font-size: 18px;
+              letter-spacing: 1px;
             }
             .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
           </style>
@@ -102,13 +102,9 @@ export class EmailService {
             </div>
             <div class="content">
               <p>Hello${userName ? ` ${userName}` : ''},</p>
-              <p>Thank you for registering with our furniture marketplace! To complete your registration, please verify your email address by clicking the button below:</p>
-              <div style="text-align: center;">
-                <a href="${verificationUrl}" class="button">Verify Email Address</a>
-              </div>
-              <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
-              <p style="word-break: break-all; color: #007bff;">${verificationUrl}</p>
-              <p><strong>This verification link will expire in 24 hours.</strong></p>
+              <p>Thank you for registering with our furniture marketplace! To complete your registration, please enter the verification token below:</p>
+              <div class="token">${token}</div>
+              <p><strong>This token will expire in 24 hours.</strong></p>
               <p>If you didn't create an account with us, please ignore this email.</p>
             </div>
             <div class="footer">
@@ -122,11 +118,11 @@ export class EmailService {
     const text = `
       Hello${userName ? ` ${userName}` : ''},
       
-      Thank you for registering with our furniture marketplace! To complete your registration, please verify your email address by visiting this link:
+      Thank you for registering with our furniture marketplace! To complete your registration, please use the verification token below:
       
-      ${verificationUrl}
+      ${token}
       
-      This verification link will expire in 24 hours.
+      This token will expire in 24 hours.
       
       If you didn't create an account with us, please ignore this email.
       

@@ -36,6 +36,12 @@ export interface OrderWithDetails extends OrderRequest {
     status: string;
     createdAt: Date;
   }[];
+  customProduct?: {
+    id: number;
+    name: string;
+    description: string | null;
+    images: string[];
+  } | null;
 }
 
 export interface PaginatedOrders {
@@ -48,7 +54,48 @@ export interface PaginatedOrders {
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
+
+  private getOrderInclude() {
+    return {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      product: {
+        include: {
+          owner: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      },
+      payments: {
+        select: {
+          id: true,
+          totalPrice: true,
+          status: true,
+          createdAt: true,
+        },
+      },
+      customProduct: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          images: true,
+        },
+      },
+    };
+  }
 
   async create(
     userId: number,
@@ -78,6 +125,12 @@ export class OrdersService {
       throw new BadRequestException('Decided price must be greater than 0');
     }
 
+    // Calculate costs
+    const decidedPrice = createOrderDto.decidedPrice;
+    const platformCost = decidedPrice * 0.05; // 5% platform cost
+    const productCost = decidedPrice * 0.8; // 80% product cost
+    const advancePay = createOrderDto.advancePayment ? decidedPrice * 0.2 : null; // 20% advance
+
     // Create the order request
     const order = await this.prisma.orderRequest.create({
       data: {
@@ -91,9 +144,6 @@ export class OrdersService {
         customerWhatsapp: createOrderDto.customerWhatsapp,
         customerEmail: createOrderDto.customerEmail,
         customerNotes: createOrderDto.customerNotes,
-        productName: createOrderDto.productName,
-        productDescription: createOrderDto.productDescription,
-        customize_images: createOrderDto.customizeImages || [],
         deliveringDate: createOrderDto.deliveringDate
           ? new Date(createOrderDto.deliveringDate)
           : null,
@@ -102,37 +152,11 @@ export class OrdersService {
           ? new Date(createOrderDto.deliveryDate)
           : null,
         status: OrderStatus.PENDING,
+        advancePay: advancePay,
+        platformCost: platformCost,
+        productCost: productCost,
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        product: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        payments: {
-          select: {
-            id: true,
-            totalPrice: true,
-            status: true,
-            createdAt: true,
-          },
-        },
-      },
+      include: this.getOrderInclude(),
     });
 
     return order;
@@ -193,36 +217,7 @@ export class OrdersService {
         skip,
         take: limit,
         orderBy,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          product: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          },
-          payments: {
-            select: {
-              id: true,
-              totalPrice: true,
-              status: true,
-              createdAt: true,
-            },
-          },
-        },
+        include: this.getOrderInclude(),
       }),
       this.prisma.orderRequest.count({ where }),
     ]);
@@ -241,36 +236,7 @@ export class OrdersService {
   async findOne(id: number): Promise<OrderWithDetails> {
     const order = await this.prisma.orderRequest.findUnique({
       where: { id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        product: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        payments: {
-          select: {
-            id: true,
-            totalPrice: true,
-            status: true,
-            createdAt: true,
-          },
-        },
-      },
+      include: this.getOrderInclude(),
     });
 
     if (!order) {
@@ -330,36 +296,7 @@ export class OrdersService {
         skip,
         take: limit,
         orderBy,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          product: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          },
-          payments: {
-            select: {
-              id: true,
-              totalPrice: true,
-              status: true,
-              createdAt: true,
-            },
-          },
-        },
+        include: this.getOrderInclude(),
       }),
       this.prisma.orderRequest.count({ where }),
     ]);
@@ -446,36 +383,7 @@ export class OrdersService {
         skip,
         take: limit,
         orderBy,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          product: {
-            include: {
-              owner: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          },
-          payments: {
-            select: {
-              id: true,
-              totalPrice: true,
-              status: true,
-              createdAt: true,
-            },
-          },
-        },
+        include: this.getOrderInclude(),
       }),
       this.prisma.orderRequest.count({ where }),
     ]);
@@ -525,17 +433,7 @@ export class OrdersService {
     }
 
     // Prepare update data
-    const updateData: Partial<{
-      status: OrderStatus;
-      deliveringDate: Date | null;
-      deliveryDate: Date | null;
-      customerName: string;
-      customerPhone: string;
-      customerWhatsapp: string;
-      customerEmail: string;
-      customerNotes: string | null;
-      deliveryAddress: string | null;
-    }> = {};
+    const updateData: Partial<Prisma.OrderRequestUpdateInput> = {};
 
     // Only allow certain fields to be updated based on user role
     if (userRole === 'ADMIN' || existingOrder.product.ownerId === userId) {
@@ -575,41 +473,33 @@ export class OrdersService {
       if (updateOrderDto.deliveryAddress !== undefined) {
         updateData.deliveryAddress = updateOrderDto.deliveryAddress;
       }
+      if (updateOrderDto.platform !== undefined) {
+        updateData.platform = updateOrderDto.platform;
+      }
+      if (updateOrderDto.decidedPrice !== undefined) {
+        updateData.decidedPrice = updateOrderDto.decidedPrice;
+        // Recalculate costs if price changes
+        const newPrice = updateOrderDto.decidedPrice;
+        updateData.platformCost = newPrice * 0.05;
+        updateData.productCost = newPrice * 0.8;
+        if (updateOrderDto.advancePayment) {
+          updateData.advancePay = newPrice * 0.2;
+        }
+      }
+      if (updateOrderDto.advancePayment !== undefined) {
+        updateData.advancePayment = updateOrderDto.advancePayment;
+        if (updateOrderDto.advancePayment && updateOrderDto.decidedPrice) {
+          updateData.advancePay = updateOrderDto.decidedPrice * 0.2;
+        } else if (!updateOrderDto.advancePayment) {
+          updateData.advancePay = null;
+        }
+      }
     }
 
     const updatedOrder = await this.prisma.orderRequest.update({
       where: { id },
       data: updateData,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        product: {
-          include: {
-            owner: {
-              select: {
-                id: true,
-                email: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        payments: {
-          select: {
-            id: true,
-            totalPrice: true,
-            status: true,
-            createdAt: true,
-          },
-        },
-      },
+      include: this.getOrderInclude(),
     });
 
     return updatedOrder;
@@ -646,6 +536,27 @@ export class OrdersService {
     await this.prisma.orderRequest.delete({
       where: { id },
     });
+  }
+
+  getStatuses(): { value: string; label: string }[] {
+    // Create a mapping of enum values to display labels
+    const statusLabels: Record<OrderStatus, string> = {
+      [OrderStatus.PENDING]: 'Pending',
+      [OrderStatus.CONFIRMED]: 'Confirmed',
+      [OrderStatus.IN_PROGRESS]: 'In Progress',
+      [OrderStatus.DELIVERED]: 'Delivered',
+      [OrderStatus.CANCELLED]: 'Cancelled',
+      [OrderStatus.PAYMENT_PENDING]: 'Payment Pending',
+      [OrderStatus.PARTIALLY_DELIVERED]: 'Partially Delivered',
+    };
+
+    // Get all enum values and map them to the desired format
+    const statuses = Object.values(OrderStatus).map((status) => ({
+      value: status,
+      label: statusLabels[status],
+    }));
+
+    return statuses;
   }
 
   async getOrderStats(): Promise<{

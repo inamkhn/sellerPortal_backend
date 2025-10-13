@@ -17,7 +17,7 @@ describe('Chat Module (e2e)', () => {
   let adminToken: string;
   let unauthorizedToken: string;
 
-  let testUsers: any = {};
+  const testUsers: any = {};
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({

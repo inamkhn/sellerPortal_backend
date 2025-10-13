@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
-import { User, Role, Prisma } from '@prisma/client';
+import { User, Role, Prisma, BankAccount } from '@prisma/client';
 
 export interface UserWithDetails {
   id: number;
@@ -360,6 +360,41 @@ export class UsersService {
     await this.prisma.user.delete({
       where: { id },
     });
+  }
+
+  getRoles(): { value: string; label: string }[] {
+    // Create a mapping of enum values to display labels
+    const roleLabels: Record<Role, string> = {
+      [Role.USER]: 'User',
+      [Role.ADMIN]: 'Admin',
+      [Role.REFERRAL_MANAGER]: 'Referral Manager',
+    };
+
+    // Get all enum values and map them to the desired format
+    const roles = Object.values(Role).map((role) => ({
+      value: role,
+      label: roleLabels[role],
+    }));
+
+    return roles;
+  }
+
+  getBankAccountTypes(): { value: string; label: string }[] {
+    // Create a mapping of enum values to display labels
+    const bankAccountLabels: Record<BankAccount, string> = {
+      [BankAccount.EASYPAISA]: 'EasyPaisa',
+      [BankAccount.JAZZCASH]: 'JazzCash',
+      [BankAccount.BANK_ACCOUNT]: 'Bank Account',
+      [BankAccount.OTHER]: 'Other',
+    };
+
+    // Get all enum values and map them to the desired format
+    const bankAccounts = Object.values(BankAccount).map((bankAccount) => ({
+      value: bankAccount,
+      label: bankAccountLabels[bankAccount],
+    }));
+
+    return bankAccounts;
   }
 
   async getUserStats(): Promise<UserStats> {

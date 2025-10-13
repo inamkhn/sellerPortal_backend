@@ -14,20 +14,17 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiBody,
   ApiBearerAuth,
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiOkResponse,
-  ApiNoContentResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
   LoginDto,
   ResetPasswordDto,
-  VerifyEmailDto,
   ForgotPasswordDto,
 } from './dto';
 import { AuthResponse } from './interfaces/auth-response.interface';
@@ -42,7 +39,7 @@ import { GoogleUser } from './strategies/google.strategy';
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService) {}
 
   @Public()
   @Post('register')
@@ -176,7 +173,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'User logout',
-    description: 'Logs out the user. Since we use stateless JWT tokens, this endpoint is mainly for client-side cleanup and logging purposes.',
+    description:
+      'Logs out the user. Since we use stateless JWT tokens, this endpoint is mainly for client-side cleanup and logging purposes.',
   })
   @ApiOkResponse({
     description: 'User successfully logged out',
@@ -199,43 +197,6 @@ export class AuthController {
   async logout(@GetUser() user: User): Promise<{ message: string }> {
     await this.authService.logout(user.id);
     return { message: 'Logged out successfully' };
-  }
-
-
-
-  @Public()
-  @Post('verify-email')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Verify email address',
-    description: 'Verifies user email address using 6-digit OTP sent via email',
-  })
-  @ApiOkResponse({
-    description: 'Email successfully verified',
-    schema: {
-      example: {
-        message: 'Email verified successfully',
-      },
-    },
-  })
-  @ApiBadRequestResponse({
-    description: 'Invalid or expired verification OTP',
-    schema: {
-      example: {
-        statusCode: 400,
-        message: 'Invalid verification OTP',
-        error: 'Bad Request',
-      },
-    },
-  })
-  async verifyEmail(
-    @Body() verifyEmailDto: VerifyEmailDto,
-  ): Promise<{ message: string }> {
-    await this.authService.verifyEmail(
-      verifyEmailDto.email,
-      verifyEmailDto.otp,
-    );
-    return { message: 'Email verified successfully' };
   }
 
   @Public()

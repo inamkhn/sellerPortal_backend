@@ -9,12 +9,7 @@ export const FACEBOOK_CATEGORY_MAPPING: Record<ProductCategory, string> = {
   TABLES: 'Home & Garden',
   SOFAS: 'Home & Garden',
   WARDROBES: 'Home & Garden',
-  DINING_SETS: 'Home & Garden',
-  OFFICE_FURNITURE: 'Home & Garden',
-  DECORATIVE_ITEMS: 'Home & Garden',
-  LIGHTING: 'Home & Garden',
   STORAGE: 'Home & Garden',
-  DRESSER: 'Home & Garden',
   OTHER: 'Home & Garden',
 };
 

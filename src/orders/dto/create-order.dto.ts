@@ -6,7 +6,6 @@ import {
   IsBoolean,
   IsEmail,
   IsDateString,
-  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -86,34 +85,6 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   customerNotes?: string;
-
-  @ApiPropertyOptional({
-    description: 'Custom product name if different from original',
-    example: 'Custom Leather Sofa',
-  })
-  @IsOptional()
-  @IsString()
-  productName?: string;
-
-  @ApiPropertyOptional({
-    description: 'Custom product description',
-    example: 'Modified with custom cushions',
-  })
-  @IsOptional()
-  @IsString()
-  productDescription?: string;
-
-  @ApiPropertyOptional({
-    description: 'Array of custom image URLs',
-    example: [
-      'https://example.com/custom1.jpg',
-      'https://example.com/custom2.jpg',
-    ],
-  })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  customizeImages?: string[];
 
   @ApiPropertyOptional({
     description: 'Expected delivering date',
