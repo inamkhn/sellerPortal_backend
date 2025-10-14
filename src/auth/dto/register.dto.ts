@@ -47,4 +47,13 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @ApiProperty({
+    description: 'Referral code from existing user',
+    example: 'ADMIN001',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }

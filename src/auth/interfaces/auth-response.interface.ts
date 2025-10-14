@@ -12,6 +12,11 @@ export interface AuthResponse {
   tokens: {
     accessToken: string;
   };
+  referralInfo?: {
+    wasReferred: boolean;
+    referrerName?: string;
+    userReferralCode: string;
+  };
 }
 
 export interface TokenPayload {

@@ -31,7 +31,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) { }
+  ) {}
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -47,7 +47,7 @@ export class AuthService {
   }
 
   // JWT token generation
-  async generateAccessToken(user: User): Promise<string> {
+  generateAccessToken(user: User): string {
     const payload: TokenPayload = {
       sub: user.id,
       email: user.email,
@@ -64,7 +64,7 @@ export class AuthService {
 
   // User registration
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const { email, password, firstName, lastName } = registerDto;
+    const { email, password, firstName, lastName, referralCode } = registerDto;
 
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
@@ -73,6 +73,25 @@ export class AuthService {
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
+    }
+
+    // Validate referral code if provided
+    let referrer: User | null = null;
+    if (
+      referralCode &&
+      typeof referralCode === 'string' &&
+      referralCode.trim()
+    ) {
+      const referrerProfile = await this.prisma.profile.findUnique({
+        where: { referralCode: referralCode.trim() },
+        include: { user: true },
+      });
+
+      if (!referrerProfile || !referrerProfile.user) {
+        throw new BadRequestException('Invalid referral code');
+      }
+
+      referrer = referrerProfile.user;
     }
 
     // Hash password
@@ -95,8 +114,31 @@ export class AuthService {
       },
     });
 
+    // Create user profile with referral information
+    const profileData = {
+      userId: user.id,
+      fullName: `${firstName || ''} ${lastName || ''}`.trim() || null,
+      referralCode: await this.generateUniqueReferralCode(),
+      verified: false,
+      referredBy: referrer?.id || null,
+    };
+
+    await this.prisma.profile.create({
+      data: profileData,
+    });
+
+    // Create referral record if there's a referrer
+    if (referrer) {
+      await this.prisma.referral.create({
+        data: {
+          referrerId: referrer.id,
+          refereeId: user.id,
+        },
+      });
+    }
+
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     // Send verification email
     try {
@@ -122,7 +164,41 @@ export class AuthService {
       tokens: {
         accessToken,
       },
+      referralInfo: referrer
+        ? {
+            wasReferred: true,
+            referrerName:
+              `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+              referrer.email,
+            userReferralCode: profileData.referralCode,
+          }
+        : {
+            wasReferred: false,
+            userReferralCode: profileData.referralCode,
+          },
     };
+  }
+
+  // Generate unique referral code
+  private async generateUniqueReferralCode(): Promise<string> {
+    let referralCode = '';
+    let isUnique = false;
+
+    while (!isUnique) {
+      // Generate a random 8-character alphanumeric code
+      referralCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+      // Check if it's unique
+      const existingProfile = await this.prisma.profile.findUnique({
+        where: { referralCode },
+      });
+
+      if (!existingProfile) {
+        isUnique = true;
+      }
+    }
+
+    return referralCode;
   }
 
   // User login
@@ -154,7 +230,7 @@ export class AuthService {
     });
 
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     return {
       user: {
@@ -215,7 +291,7 @@ export class AuthService {
     }
 
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     return {
       user: {
@@ -373,6 +449,47 @@ export class AuthService {
       // Log error but don't fail the operation
       console.error('Failed to send password reset confirmation email:', error);
     }
+  }
+
+  // Email verification with OTP
+  async verifyEmail(email: string, otp: string): Promise<void> {
+    // Validate OTP format
+    if (!isValidOTPFormat(otp, 6)) {
+      throw new BadRequestException('Invalid OTP format');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (!user.emailVerificationOtp) {
+      throw new BadRequestException('No verification OTP found');
+    }
+
+    if (user.emailVerificationOtp !== otp) {
+      throw new BadRequestException('Invalid verification OTP');
+    }
+
+    if (
+      !user.emailVerificationExpiry ||
+      isOTPExpired(user.emailVerificationExpiry)
+    ) {
+      throw new BadRequestException('Verification OTP has expired');
+    }
+
+    // Mark user as verified and clear verification OTP
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isVerified: true,
+        emailVerificationOtp: null,
+        emailVerificationExpiry: null,
+      },
+    });
   }
 
   // Get user by ID (for JWT strategy)

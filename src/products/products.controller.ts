@@ -49,7 +49,7 @@ export class ProductsController {
   constructor(
     private productsService: ProductsService,
     private uploadService: UploadService,
-  ) { }
+  ) {}
 
   @Post()
   @UseInterceptors(

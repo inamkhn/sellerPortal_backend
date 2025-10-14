@@ -38,7 +38,7 @@ export class ProductsService {
     private prisma: PrismaService,
     private uploadService: UploadService,
     private profileService: ProfileService,
-  ) { }
+  ) {}
 
   async create(
     userId: number,

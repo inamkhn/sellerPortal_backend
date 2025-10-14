@@ -269,29 +269,7 @@ export class ProfileService {
     });
   }
 
-  async generateUniqueReferralCode(): Promise<string> {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let referralCode: string;
-    let isUnique = false;
-
-    do {
-      referralCode = '';
-      for (let i = 0; i < 8; i++) {
-        referralCode += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-
-      const existing = await this.prisma.profile.findUnique({
-        where: { referralCode },
-      });
-
-      isUnique = !existing;
-    } while (!isUnique);
-
-    return referralCode;
-  }
-
   // Product Management Methods
-
   async addProductToProfile(
     userId: number,
     productId: number,

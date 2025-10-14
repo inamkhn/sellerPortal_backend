@@ -318,36 +318,7 @@ export class ProfileController {
     return this.profileService.deleteProfile(user.id);
   }
 
-  @Get('generate-referral-code')
-  @ApiOperation({
-    summary: 'Generate unique referral code',
-    description: 'Generates a unique 8-character referral code',
-  })
-  @ApiOkResponse({
-    description: 'Referral code generated successfully',
-    schema: {
-      example: {
-        referralCode: 'XYZ98765',
-      },
-    },
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Invalid or missing access token',
-    schema: {
-      example: {
-        statusCode: 401,
-        message: 'Unauthorized',
-        error: 'Unauthorized',
-      },
-    },
-  })
-  async generateReferralCode(): Promise<{ referralCode: string }> {
-    const referralCode = await this.profileService.generateUniqueReferralCode();
-    return { referralCode };
-  }
-
   // Product Management Endpoints
-
   @Post('products/:productId')
   @ApiOperation({
     summary: 'Add product to profile listed products',

@@ -54,7 +54,7 @@ export interface PaginatedOrders {
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private getOrderInclude() {
     return {
@@ -129,7 +129,9 @@ export class OrdersService {
     const decidedPrice = createOrderDto.decidedPrice;
     const platformCost = decidedPrice * 0.05; // 5% platform cost
     const productCost = decidedPrice * 0.8; // 80% product cost
-    const advancePay = createOrderDto.advancePayment ? decidedPrice * 0.2 : null; // 20% advance
+    const advancePay = createOrderDto.advancePayment
+      ? decidedPrice * 0.2
+      : null; // 20% advance
 
     // Create the order request
     const order = await this.prisma.orderRequest.create({

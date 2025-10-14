@@ -26,6 +26,7 @@ import {
   LoginDto,
   ResetPasswordDto,
   ForgotPasswordDto,
+  VerifyEmailDto,
 } from './dto';
 import { AuthResponse } from './interfaces/auth-response.interface';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -39,14 +40,14 @@ import { GoogleUser } from './strategies/google.strategy';
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   @Public()
   @Post('register')
   @ApiOperation({
     summary: 'Register a new user',
     description:
-      'Creates a new user account with email and password. Sends email verification OTP.',
+      'Creates a new user account with email and password. Optionally accepts referral code. Sends email verification OTP.',
   })
   @ApiResponse({
     status: 201,
@@ -74,6 +75,14 @@ export class AuthController {
             },
           },
         },
+        referralInfo: {
+          type: 'object',
+          properties: {
+            wasReferred: { type: 'boolean', example: true },
+            referrerName: { type: 'string', example: 'Admin User' },
+            userReferralCode: { type: 'string', example: 'ABC12345' },
+          },
+        },
       },
     },
   })
@@ -88,13 +97,14 @@ export class AuthController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Invalid input data',
+    description: 'Invalid input data or referral code',
     schema: {
       example: {
         statusCode: 400,
         message: [
           'Please provide a valid email address',
           'Password must be at least 8 characters long',
+          'Invalid referral code',
         ],
         error: 'Bad Request',
       },
@@ -297,6 +307,41 @@ export class AuthController {
       resetPasswordDto.newPassword,
     );
     return { message: 'Password reset successfully' };
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify email address',
+    description: 'Verifies user email address using 6-digit OTP sent via email',
+  })
+  @ApiOkResponse({
+    description: 'Email successfully verified',
+    schema: {
+      example: {
+        message: 'Email verified successfully',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid or expired verification OTP',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Invalid verification OTP',
+        error: 'Bad Request',
+      },
+    },
+  })
+  async verifyEmail(
+    @Body() VerifyEmailDto: VerifyEmailDto,
+  ): Promise<{ message: string }> {
+    await this.authService.verifyEmail(
+      VerifyEmailDto.email,
+      VerifyEmailDto.otp,
+    );
+    return { message: 'Email verified successfully' };
   }
 
   @Public()
