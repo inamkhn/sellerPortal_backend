@@ -8,15 +8,9 @@ import { join } from 'path';
 
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
 import { ProfileModule } from './profile/profile.module';
 import { ProductsModule } from './products/products.module';
-import { OrdersModule } from './orders/orders.module';
-import { PaymentsModule } from './payments/payments.module';
-import { ReferralsModule } from './referrals/referrals.module';
 import { UploadModule } from './upload/upload.module';
-import { UserAnalyticsModule } from './user-analytics/user-analytics.module';
-import { AdminAnalyticsModule } from './admin-analytics/admin-analytics.module';
 import { FacebookIntegrationModule } from './facebook-integration/facebook-integration.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
@@ -83,15 +77,9 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     }),
     DatabaseModule,
     AuthModule,
-    UsersModule,
     ProfileModule,
     ProductsModule,
-    OrdersModule,
-    PaymentsModule,
-    ReferralsModule,
     UploadModule,
-    UserAnalyticsModule,
-    AdminAnalyticsModule,
     FacebookIntegrationModule,
   ],
 })

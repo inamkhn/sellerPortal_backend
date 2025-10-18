@@ -1,9 +1,9 @@
-import { ProductCategory, ProductCondition } from '@prisma/client';
+import { ProductCondition } from '@prisma/client';
 
 /**
  * Maps internal product categories to Facebook Marketplace categories
  */
-export const FACEBOOK_CATEGORY_MAPPING: Record<ProductCategory, string> = {
+export const FACEBOOK_CATEGORY_MAPPING: Record<string, string> = {
   BEDS: 'Home & Garden',
   CHAIRS: 'Home & Garden',
   TABLES: 'Home & Garden',

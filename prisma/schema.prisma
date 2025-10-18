@@ -8,31 +8,31 @@ datasource db {
 }
 
 model User {
-  id                      Int            @id @default(autoincrement())
-  email                   String         @unique
-  password                String?
-  firstName               String?        @map("first_name")
-  lastName                String?        @map("last_name")
-  avatar                  String?
-  role                    Role           @default(USER)
-  isVerified              Boolean        @default(false) @map("is_verified")
-  googleId                String?        @unique @map("google_id")
-  lastLogin               DateTime?      @map("last_login")
-  createdAt               DateTime       @default(now()) @map("created_at")
-  updatedAt               DateTime       @updatedAt @map("updated_at")
-  emailVerificationExpiry DateTime?      @map("email_verification_expiry")
-  refreshToken            String?        @unique @map("refresh_token")
-  emailVerificationOtp    String?        @map("email_verification_otp")
-  passwordResetExpiry     DateTime?      @map("password_reset_expiry")
-  passwordResetOtp        String?        @map("password_reset_otp")
-  orderRequests           OrderRequest[]
-  paymentsAsReferrer      Payment[]      @relation("ReferrerPayments")
-  payments                Payment[]
-  products                Product[]
-  referredUsers           Profile[]      @relation("ReferredByRelation")
-  profile                 Profile?
-  referralsReceived       Referral[]     @relation("RefereeRelation")
-  referralsMade           Referral[]     @relation("ReferrerRelation")
+  id                         Int               @id @default(autoincrement())
+  email                      String            @unique
+  password                   String?
+  firstName                  String?           @map("first_name")
+  lastName                   String?           @map("last_name")
+  avatar                     String?
+  role                       Role              @default(USER)
+  isVerified                 Boolean           @default(false) @map("is_verified")
+  googleId                   String?           @unique @map("google_id")
+  lastLogin                  DateTime?         @map("last_login")
+  createdAt                  DateTime          @default(now()) @map("created_at")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+  emailVerificationExpiry    DateTime?         @map("email_verification_expiry")
+  refreshToken               String?           @unique @map("refresh_token")
+  emailVerificationOtp       String?           @map("email_verification_otp")
+  passwordResetExpiry        DateTime?         @map("password_reset_expiry")
+  passwordResetOtp           String?           @map("password_reset_otp")
+  orderRequests              OrderRequest[]
+  products                   Product[]
+  referredUsers              Profile[]         @relation("ReferredByRelation")
+  profile                    Profile?
+  referralsReceived          Referral[]        @relation("RefereeRelation")
+  referralsMade              Referral[]        @relation("ReferrerRelation")
+  settlements                Settlement[]
+  orderSettlementsAsReferrer OrderSettlement[] @relation("OrderReferrerSettlements")
 
   @@index([email])
   @@index([googleId])
@@ -86,7 +86,7 @@ model Product {
   title                 String
   description           String?
   price                 Decimal               @db.Decimal(10, 2)
-  category              ProductCategory
+  categoryId            Int                   @map("category_id")
   condition             ProductCondition
   photos                String[]              @default([])
   brand                 String?
@@ -101,16 +101,27 @@ model Product {
   facebookLastPosted    DateTime?             @map("facebook_last_posted")
   facebookRetryCount    Int                   @default(0) @map("facebook_retry_count")
   createdAt             DateTime              @default(now()) @map("created_at")
+  category              Category              @relation(fields: [categoryId], references: [id])
   orderRequests         OrderRequest[]
   owner                 User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
-  @@index([category])
-  @@index([condition])
+  @@index([categoryId])
   @@index([title])
   @@index([price])
   @@index([facebookPostingStatus])
   @@map("products")
+}
+
+model Category {
+  id             Int             @id @default(autoincrement())
+  name           String          @unique
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  products       Product[]
+  customProducts CustomProduct[]
+
+  @@map("categories")
 }
 
 model CustomProduct {
@@ -118,73 +129,105 @@ model CustomProduct {
   orderRequestId Int          @unique @map("order_request_id")
   name           String       @map("product_name")
   description    String?      @map("product_description")
+  categoryId     Int          @map("category_id")
   images         String[]     @default([]) @map("customize_images")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
+  category       Category     @relation(fields: [categoryId], references: [id])
   orderRequest   OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
 
   @@index([orderRequestId])
+  @@index([categoryId])
   @@map("custom_products")
 }
 
 model OrderRequest {
-  id               Int            @id @default(autoincrement())
-  userId           Int            @map("user_id")
-  productId        Int            @map("product_id")
+  id               Int               @id @default(autoincrement())
+  userId           Int               @map("user_id")
+  productId        Int?              @map("product_id")
+  isCustomProduct  Boolean           @default(false) @map("is_custom_product")
   platform         String?
-  decidedPrice     Decimal        @db.Decimal(10, 2)
-  advancePayment   Boolean        @default(false) @map("advance_payment")
-  customerName     String         @map("customer_name")
-  customerPhone    String         @map("customer_phone")
-  customerWhatsapp String         @map("customer_whatsapp")
-  customerEmail    String         @map("customer_email")
-  deliveringDate   DateTime?      @map("delivering_date")
-  deliveryAddress  String?        @map("delivery_address")
-  deliveryDate     DateTime?      @map("delivery_date")
-  status           OrderStatus    @default(PENDING)
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-  customerNotes    String?        @map("customer_notes")
-  advancePay       Decimal?       @map("advance_pay") @db.Decimal(10, 2)
-  platformCost     Decimal?       @map("platform_cost") @db.Decimal(10, 2)
-  productCost      Decimal?       @map("product_cost") @db.Decimal(10, 2)
+  decidedPrice     Decimal           @db.Decimal(10, 2)
+  advancePayment   Boolean           @default(false) @map("advance_payment")
+  advancePay       Decimal?          @map("advance_pay") @db.Decimal(10, 2)
+  customerName     String            @map("customer_name")
+  customerPhone    String            @map("customer_phone")
+  customerWhatsapp String            @map("customer_whatsapp")
+  customerEmail    String            @map("customer_email")
+  customerNotes    String?           @map("customer_notes")
+  deliveryAddress  String?           @map("delivery_address")
+  deliveryDate     DateTime?         @map("delivery_date")
+  status           OrderStatus       @default(PENDING)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
   customProduct    CustomProduct?
-  product          Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments         Payment[]
+  product          Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderSettlements OrderSettlement[]
 
   @@index([userId])
   @@index([productId])
   @@index([status])
+  @@index([isCustomProduct])
   @@index([createdAt])
   @@map("order_requests")
 }
 
-model Payment {
-  id                 Int           @id @default(autoincrement())
-  orderRequestId     Int           @map("order_request_id")
-  userId             Int           @map("user_id")
-  userShare          Decimal       @map("user_share") @db.Decimal(10, 2)
-  referrerId         Int?          @map("referrer_id")
-  referrerShare      Decimal?      @map("referrer_share") @db.Decimal(10, 2)
-  totalPrice         Decimal       @map("total_price") @db.Decimal(10, 2)
-  proofScreenshotUrl String?       @map("proof_screenshot_url")
-  createdAt          DateTime      @default(now()) @map("created_at")
-  status             PaymentStatus @default(PENDING)
-  paymentType        PaymentType   @default(SELLER) @map("payment_type")
-  platformCost       Decimal?      @map("platform_cost") @db.Decimal(10, 2)
-  productCost        Decimal?      @map("product_cost") @db.Decimal(10, 2)
-  managerCommission  Decimal?      @map("manager_commission") @db.Decimal(10, 2)
-  orderRequest       OrderRequest  @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
-  referrer           User?         @relation("ReferrerPayments", fields: [referrerId], references: [id])
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+// When admin marks order as PARTIALLY_DELIVERED or DELIVERED, create settlement record
+model OrderSettlement {
+  id                     Int              @id @default(autoincrement())
+  orderRequestId         Int              @map("order_request_id")
+  totalAmount            Decimal          @map("total_amount") @db.Decimal(10, 2)
+  productCost            Decimal          @map("product_cost") @db.Decimal(10, 2)
+  adminCommission        Decimal          @map("admin_commission") @db.Decimal(10, 2)
+  grossSellerAmount      Decimal          @map("gross_seller_amount") @db.Decimal(10, 2)
+  referralCommission     Decimal?         @map("referral_commission") @db.Decimal(10, 2)
+  referralCommissionRate Decimal?         @map("referral_commission_rate") @db.Decimal(5, 2)
+  isFixedCommission      Boolean          @default(false) @map("is_fixed_commission")
+  netSellerAmount        Decimal          @map("net_seller_amount") @db.Decimal(10, 2)
+  referrerId             Int?             @map("referrer_id")
+  referrerRole           Role?            @map("referrer_role")
+  adminSettledBy         Int?             @map("admin_settled_by")
+  adminSettledAt         DateTime?        @map("admin_settled_at")
+  referralSettledBy      Int?             @map("referral_settled_by")
+  referralSettledAt      DateTime?        @map("referral_settled_at")
+  notes                  String?
+  status                 SettlementStatus @default(PENDING)
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
+  orderRequest           OrderRequest     @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+  referrer               User?            @relation("OrderReferrerSettlements", fields: [referrerId], references: [id])
+  settlements            Settlement[]
 
   @@index([orderRequestId])
-  @@index([userId])
   @@index([referrerId])
-  @@index([paymentType])
   @@index([status])
-  @@map("payments")
+  @@index([adminSettledAt])
+  @@index([referralSettledAt])
+  @@map("order_settlements")
+}
+
+// Individual settlement records for each party
+model Settlement {
+  id                Int              @id @default(autoincrement())
+  orderSettlementId Int              @map("order_settlement_id")
+  userId            Int              @map("user_id")
+  settlementType    SettlementType   @map("settlement_type")
+  amount            Decimal          @db.Decimal(10, 2)
+  status            SettlementStatus @default(PENDING)
+  paidAt            DateTime?        @map("paid_at")
+  paymentProof      String?          @map("payment_proof")
+  notes             String?
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  orderSettlement   OrderSettlement  @relation(fields: [orderSettlementId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderSettlementId])
+  @@index([userId])
+  @@index([settlementType])
+  @@index([status])
+  @@map("settlements")
 }
 
 enum Role {
@@ -202,18 +245,6 @@ enum BankAccount {
   OTHER
 
   @@map("bank_account")
-}
-
-enum ProductCategory {
-  BEDS
-  CHAIRS
-  TABLES
-  SOFAS
-  OTHER
-  WARDROBES
-  STORAGE
-
-  @@map("product_category")
 }
 
 enum ProductCondition {
@@ -238,21 +269,6 @@ enum OrderStatus {
   @@map("order_status")
 }
 
-enum PaymentStatus {
-  PENDING
-  PAID
-  CANCELLED
-
-  @@map("payment_status")
-}
-
-enum PaymentType {
-  SELLER
-  REFERRAL
-
-  @@map("payment_type")
-}
-
 enum FacebookPostingStatus {
   NOT_POSTED
   POSTING
@@ -261,4 +277,20 @@ enum FacebookPostingStatus {
   NEEDS_UPDATE
 
   @@map("facebook_posting_status")
+}
+
+enum SettlementStatus {
+  PENDING
+  PAID
+  CANCELLED
+
+  @@map("settlement_status")
+}
+
+enum SettlementType {
+  SELLER_PAYMENT
+  REFERRAL_PAYMENT // Works for both USER and REFERRAL_MANAGER referrers
+  ADMIN_COMMISSION
+
+  @@map("settlement_type")
 }

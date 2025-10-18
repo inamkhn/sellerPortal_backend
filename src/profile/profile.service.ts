@@ -454,7 +454,7 @@ export class ProfileService {
       ownerId: product.ownerId,
       title: product.title,
       price: product.price.toString(),
-      category: product.category,
+      category: product.category?.name || 'Uncategorized',
       condition: product.condition,
       sku: product.sku,
       facebookPostingStatus: product.facebookPostingStatus,

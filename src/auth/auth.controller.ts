@@ -40,7 +40,7 @@ import { GoogleUser } from './strategies/google.strategy';
 @Controller('auth')
 @UseFilters(AuthExceptionFilter)
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService) {}
 
   @Public()
   @Post('register')

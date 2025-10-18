@@ -11,7 +11,7 @@ import {
   Max,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { ProductCategory, ProductCondition } from '@prisma/client';
+import { ProductCondition } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class CreateProductDto {
@@ -51,12 +51,12 @@ export class CreateProductDto {
   price: number;
 
   @ApiProperty({
-    description: 'Product category',
-    enum: ProductCategory,
-    example: ProductCategory.SOFAS,
+    description: 'Product category ID',
+    example: 1,
   })
-  @IsEnum(ProductCategory, { message: 'Invalid product category' })
-  category: ProductCategory;
+  @IsInt({ message: 'Category ID must be an integer' })
+  @Type(() => Number)
+  categoryId: number;
 
   @ApiProperty({
     description: 'Product condition',
