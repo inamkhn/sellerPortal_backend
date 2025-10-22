@@ -409,6 +409,52 @@ export class AuthController {
     return this.authService.registerWithGoogle(req.user as GoogleUser);
   }
 
+  // /api/auth/me
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get current user',
+    description:
+      'Returns information about the authenticated user with profile',
+  })
+  @ApiOkResponse({
+    description: 'User information retrieved successfully',
+    schema: {
+      example: {
+        user: {
+          id: 1,
+          email: 'user@example.com',
+          firstName: 'John',
+          lastName: 'Doe',
+          role: 'ADMIN',
+          isVerified: true,
+          avatar: null,
+          profile: {
+            fullName: 'John Doe',
+            whatsappNumber: '+971501234567',
+            referralCode: 'ABC12345',
+            verified: true,
+          },
+        },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized',
+      },
+    },
+  })
+  async getMe(@GetUser() user: User) {
+    return await this.authService.getMe(user.id);
+  }
+
   // @UseGuards(JwtAuthGuard)
   // @Get('profile')
   // @ApiBearerAuth()

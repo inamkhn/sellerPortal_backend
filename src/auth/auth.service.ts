@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -31,7 +32,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) {}
+  ) { }
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -166,16 +167,16 @@ export class AuthService {
       },
       referralInfo: referrer
         ? {
-            wasReferred: true,
-            referrerName:
-              `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
-              referrer.email,
-            userReferralCode: profileData.referralCode,
-          }
+          wasReferred: true,
+          referrerName:
+            `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+            referrer.email,
+          userReferralCode: profileData.referralCode,
+        }
         : {
-            wasReferred: false,
-            userReferralCode: profileData.referralCode,
-          },
+          wasReferred: false,
+          userReferralCode: profileData.referralCode,
+        },
     };
   }
 
@@ -490,6 +491,41 @@ export class AuthService {
         emailVerificationExpiry: null,
       },
     });
+  }
+
+  //  /api/auth/me  getMe
+
+  async getMe(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: {
+          select: {
+            fullName: true,
+            whatsappNumber: true,
+            referralCode: true,
+            verified: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatar: user.avatar,
+        role: user.role,
+        isVerified: user.isVerified,
+        profile: user.profile,
+      },
+    };
   }
 
   // Get user by ID (for JWT strategy)
