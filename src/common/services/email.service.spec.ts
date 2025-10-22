@@ -17,7 +17,7 @@ describe('EmailService', () => {
             get: jest.fn((key: string, defaultValue?: string) => {
               const config: Record<string, string> = {
                 RESEND_API_KEY: 'test-api-key',
-                EMAIL_FROM: 'inamkhn.787@gmail.com',
+                EMAIL_FROM: 'onboarding@resend.dev',
                 FRONTEND_URL: 'http://localhost:3000',
               };
               return config[key] || defaultValue;
