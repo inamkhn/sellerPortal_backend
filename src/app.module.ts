@@ -12,6 +12,9 @@ import { ProfileModule } from './profile/profile.module';
 import { ProductsModule } from './products/products.module';
 import { UploadModule } from './upload/upload.module';
 import { FacebookIntegrationModule } from './facebook-integration/facebook-integration.module';
+import { CategoryModule } from './category/category.module';
+import { OrderRequestModule } from './order-request/order-request.module';
+import { CustomProductModule } from './custom-product/custom-product.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
 @Module({
@@ -81,6 +84,9 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     ProductsModule,
     UploadModule,
     FacebookIntegrationModule,
+    CategoryModule,
+    OrderRequestModule,
+    CustomProductModule,
   ],
 })
 export class AppModule {}

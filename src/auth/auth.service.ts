@@ -32,7 +32,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) { }
+  ) {}
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -167,16 +167,16 @@ export class AuthService {
       },
       referralInfo: referrer
         ? {
-          wasReferred: true,
-          referrerName:
-            `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
-            referrer.email,
-          userReferralCode: profileData.referralCode,
-        }
+            wasReferred: true,
+            referrerName:
+              `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+              referrer.email,
+            userReferralCode: profileData.referralCode,
+          }
         : {
-          wasReferred: false,
-          userReferralCode: profileData.referralCode,
-        },
+            wasReferred: false,
+            userReferralCode: profileData.referralCode,
+          },
     };
   }
 
