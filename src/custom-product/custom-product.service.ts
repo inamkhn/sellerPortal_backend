@@ -15,7 +15,7 @@ export class CustomProductService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploadService: UploadService,
-  ) { }
+  ) {}
 
   async create(
     orderRequestId: number,

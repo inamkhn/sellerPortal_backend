@@ -15,6 +15,7 @@ import { FacebookIntegrationModule } from './facebook-integration/facebook-integ
 import { CategoryModule } from './category/category.module';
 import { OrderRequestModule } from './order-request/order-request.module';
 import { CustomProductModule } from './custom-product/custom-product.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
 @Module({
@@ -87,6 +88,7 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     CategoryModule,
     OrderRequestModule,
     CustomProductModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

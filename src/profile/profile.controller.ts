@@ -174,7 +174,7 @@ export class ProfileController {
       },
     },
   })
-  async getProfile(@GetUser() user: User): Promise<Profile | null> {
+  async getProfile(@GetUser() user: User): Promise<Profile> {
     return this.profileService.getProfile(user.id);
   }
 

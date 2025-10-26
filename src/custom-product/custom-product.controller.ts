@@ -40,9 +40,9 @@ export class CustomProductController {
   constructor(
     private readonly customProductService: CustomProductService,
     private readonly uploadService: UploadService,
-  ) { }
+  ) {}
 
-  @Post('order-request/:orderRequestId')
+  @Post('/:orderRequestId')
   @UseInterceptors(
     FilesInterceptor('images', 10, {
       limits: {
@@ -110,7 +110,7 @@ export class CustomProductController {
     );
   }
 
-  @Get('order-request/:orderRequestId')
+  @Get('/:orderRequestId')
   @ApiOperation({ summary: 'Get custom product by order request ID' })
   @ApiResponse({
     status: 200,
@@ -131,7 +131,7 @@ export class CustomProductController {
     );
   }
 
-  @Patch('order-request/:orderRequestId')
+  @Patch('/:orderRequestId')
   @UseInterceptors(
     FilesInterceptor('images', 10, {
       limits: {
@@ -207,7 +207,7 @@ export class CustomProductController {
     );
   }
 
-  @Delete('order-request/:orderRequestId')
+  @Delete('/:orderRequestId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete custom product by order request ID' })
   @ApiResponse({

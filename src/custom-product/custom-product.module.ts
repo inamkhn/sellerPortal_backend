@@ -10,4 +10,4 @@ import { UploadModule } from '../upload/upload.module';
   providers: [CustomProductService],
   exports: [CustomProductService],
 })
-export class CustomProductModule { }
+export class CustomProductModule {}
