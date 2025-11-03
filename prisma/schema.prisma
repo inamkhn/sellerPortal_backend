@@ -230,47 +230,6 @@ model Settlement {
   @@map("settlements")
 }
 
-// Track referral manager performance and activities
-model ReferralManagerMetrics {
-  id                    Int      @id @default(autoincrement())
-  managerId             Int      @map("manager_id")
-  totalReferrals        Int      @default(0) @map("total_referrals")
-  activeReferrals       Int      @default(0) @map("active_referrals")
-  totalOrders           Int      @default(0) @map("total_orders")
-  totalRevenue          Decimal  @default(0) @map("total_revenue") @db.Decimal(10, 2)
-  totalCommissionEarned Decimal  @default(0) @map("total_commission_earned") @db.Decimal(10, 2)
-  pendingCommission     Decimal  @default(0) @map("pending_commission") @db.Decimal(10, 2)
-  paidCommission        Decimal  @default(0) @map("paid_commission") @db.Decimal(10, 2)
-  conversionRate        Decimal? @map("conversion_rate") @db.Decimal(5, 2)
-  averageOrderValue     Decimal? @map("average_order_value") @db.Decimal(10, 2)
-  lastActivityAt        DateTime @default(now()) @map("last_activity_at")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-
-  @@unique([managerId])
-  @@index([managerId])
-  @@index([totalRevenue])
-  @@index([totalCommissionEarned])
-  @@index([lastActivityAt])
-  @@map("referral_manager_metrics")
-}
-
-// Track referral manager activities for audit trail
-model ReferralManagerActivity {
-  id           Int                         @id @default(autoincrement())
-  managerId    Int                         @map("manager_id")
-  activityType ReferralManagerActivityType @map("activity_type")
-  description  String
-  metadata     Json?
-  ipAddress    String?                     @map("ip_address")
-  createdAt    DateTime                    @default(now()) @map("created_at")
-
-  @@index([managerId])
-  @@index([activityType])
-  @@index([createdAt])
-  @@map("referral_manager_activities")
-}
-
 enum Role {
   USER
   ADMIN
@@ -343,16 +302,4 @@ enum SettlementType {
   ADMIN_COMMISSION
 
   @@map("settlement_type")
-}
-
-enum ReferralManagerActivityType {
-  REFERRAL_CREATED
-  REFERRAL_CONVERTED
-  COMMISSION_EARNED
-  COMMISSION_PAID
-  PROFILE_UPDATED
-  LOGIN
-  LOGOUT
-
-  @@map("referral_manager_activity_type")
 }
