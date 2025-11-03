@@ -5,6 +5,7 @@ import {
   ProductCondition,
   OrderStatus,
   FacebookPostingStatus,
+  OrderSettlementStatus,
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -441,7 +442,7 @@ async function main() {
       referrerRole: Role.USER,
       adminSettledBy: admin.id,
       adminSettledAt: new Date('2024-02-23'),
-      status: 'SETTLED' as const,
+      status: OrderSettlementStatus.SETTLED,
       createdAt: new Date('2024-02-22'),
       updatedAt: new Date('2024-02-23'),
     },
