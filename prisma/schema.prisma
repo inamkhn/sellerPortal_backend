@@ -126,7 +126,7 @@ model Category {
 
 model CustomProduct {
   id             Int          @id @default(autoincrement())
-  orderRequestId Int          @unique @map("order_request_id")
+  orderRequestId Int          @map("order_request_id")
   name           String       @map("product_name")
   description    String?      @map("product_description")
   categoryId     Int          @map("category_id")
@@ -160,7 +160,7 @@ model OrderRequest {
   status           OrderStatus       @default(PENDING)
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
-  customProduct    CustomProduct?
+  customProducts   CustomProduct[]
   product          Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   orderSettlements OrderSettlement[]
@@ -175,28 +175,28 @@ model OrderRequest {
 
 // When admin marks order as PARTIALLY_DELIVERED or DELIVERED, create settlement record
 model OrderSettlement {
-  id                     Int              @id @default(autoincrement())
-  orderRequestId         Int              @map("order_request_id")
-  totalAmount            Decimal          @map("total_amount") @db.Decimal(10, 2)
-  productCost            Decimal          @map("product_cost") @db.Decimal(10, 2)
-  adminCommission        Decimal          @map("admin_commission") @db.Decimal(10, 2)
-  grossSellerAmount      Decimal          @map("gross_seller_amount") @db.Decimal(10, 2)
-  referralCommission     Decimal?         @map("referral_commission") @db.Decimal(10, 2)
-  referralCommissionRate Decimal?         @map("referral_commission_rate") @db.Decimal(5, 2)
-  isFixedCommission      Boolean          @default(false) @map("is_fixed_commission")
-  netSellerAmount        Decimal          @map("net_seller_amount") @db.Decimal(10, 2)
-  referrerId             Int?             @map("referrer_id")
-  referrerRole           Role?            @map("referrer_role")
-  adminSettledBy         Int?             @map("admin_settled_by")
-  adminSettledAt         DateTime?        @map("admin_settled_at")
-  referralSettledBy      Int?             @map("referral_settled_by")
-  referralSettledAt      DateTime?        @map("referral_settled_at")
+  id                     Int                   @id @default(autoincrement())
+  orderRequestId         Int                   @map("order_request_id")
+  totalAmount            Decimal               @map("total_amount") @db.Decimal(10, 2)
+  productCost            Decimal               @map("product_cost") @db.Decimal(10, 2)
+  adminCommission        Decimal               @map("admin_commission") @db.Decimal(10, 2)
+  grossSellerAmount      Decimal               @map("gross_seller_amount") @db.Decimal(10, 2)
+  referralCommission     Decimal?              @map("referral_commission") @db.Decimal(10, 2)
+  referralCommissionRate Decimal?              @map("referral_commission_rate") @db.Decimal(5, 2)
+  isFixedCommission      Boolean               @default(false) @map("is_fixed_commission")
+  netSellerAmount        Decimal               @map("net_seller_amount") @db.Decimal(10, 2)
+  referrerId             Int?                  @map("referrer_id")
+  referrerRole           Role?                 @map("referrer_role")
+  adminSettledBy         Int?                  @map("admin_settled_by")
+  adminSettledAt         DateTime?             @map("admin_settled_at")
+  referralSettledBy      Int?                  @map("referral_settled_by")
+  referralSettledAt      DateTime?             @map("referral_settled_at")
   notes                  String?
-  status                 SettlementStatus @default(PENDING)
-  createdAt              DateTime         @default(now()) @map("created_at")
-  updatedAt              DateTime         @updatedAt @map("updated_at")
-  orderRequest           OrderRequest     @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
-  referrer               User?            @relation("OrderReferrerSettlements", fields: [referrerId], references: [id])
+  status                 OrderSettlementStatus @default(PENDING)
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  orderRequest           OrderRequest          @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+  referrer               User?                 @relation("OrderReferrerSettlements", fields: [referrerId], references: [id])
   settlements            Settlement[]
 
   @@index([orderRequestId])
@@ -228,6 +228,47 @@ model Settlement {
   @@index([settlementType])
   @@index([status])
   @@map("settlements")
+}
+
+// Track referral manager performance and activities
+model ReferralManagerMetrics {
+  id                    Int      @id @default(autoincrement())
+  managerId             Int      @map("manager_id")
+  totalReferrals        Int      @default(0) @map("total_referrals")
+  activeReferrals       Int      @default(0) @map("active_referrals")
+  totalOrders           Int      @default(0) @map("total_orders")
+  totalRevenue          Decimal  @default(0) @map("total_revenue") @db.Decimal(10, 2)
+  totalCommissionEarned Decimal  @default(0) @map("total_commission_earned") @db.Decimal(10, 2)
+  pendingCommission     Decimal  @default(0) @map("pending_commission") @db.Decimal(10, 2)
+  paidCommission        Decimal  @default(0) @map("paid_commission") @db.Decimal(10, 2)
+  conversionRate        Decimal? @map("conversion_rate") @db.Decimal(5, 2)
+  averageOrderValue     Decimal? @map("average_order_value") @db.Decimal(10, 2)
+  lastActivityAt        DateTime @default(now()) @map("last_activity_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([managerId])
+  @@index([managerId])
+  @@index([totalRevenue])
+  @@index([totalCommissionEarned])
+  @@index([lastActivityAt])
+  @@map("referral_manager_metrics")
+}
+
+// Track referral manager activities for audit trail
+model ReferralManagerActivity {
+  id           Int                         @id @default(autoincrement())
+  managerId    Int                         @map("manager_id")
+  activityType ReferralManagerActivityType @map("activity_type")
+  description  String
+  metadata     Json?
+  ipAddress    String?                     @map("ip_address")
+  createdAt    DateTime                    @default(now()) @map("created_at")
+
+  @@index([managerId])
+  @@index([activityType])
+  @@index([createdAt])
+  @@map("referral_manager_activities")
 }
 
 enum Role {
@@ -287,10 +328,31 @@ enum SettlementStatus {
   @@map("settlement_status")
 }
 
+enum OrderSettlementStatus {
+  SETTLED
+  MANAGER_PENDING
+  PENDING
+  CANCELLED
+
+  @@map("OrderSettlement_status")
+}
+
 enum SettlementType {
   SELLER_PAYMENT
   REFERRAL_PAYMENT // Works for both USER and REFERRAL_MANAGER referrers
   ADMIN_COMMISSION
 
   @@map("settlement_type")
+}
+
+enum ReferralManagerActivityType {
+  REFERRAL_CREATED
+  REFERRAL_CONVERTED
+  COMMISSION_EARNED
+  COMMISSION_PAID
+  PROFILE_UPDATED
+  LOGIN
+  LOGOUT
+
+  @@map("referral_manager_activity_type")
 }

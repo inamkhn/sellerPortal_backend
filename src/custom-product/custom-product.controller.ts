@@ -131,7 +131,7 @@ export class CustomProductController {
     );
   }
 
-  @Patch('/:orderRequestId')
+  @Patch('/:customProductId')
   @UseInterceptors(
     FilesInterceptor('images', 10, {
       limits: {
@@ -159,7 +159,7 @@ export class CustomProductController {
     }),
   )
   @ApiOperation({
-    summary: 'Update custom product by order request ID',
+    summary: 'Update custom product by ID',
     description:
       'Update custom product. Use replaceImages=true to replace all images with new uploads (deletes old images from Cloudinary). Default is false (appends new images).',
   })
@@ -175,7 +175,7 @@ export class CustomProductController {
   @ApiResponse({ status: 404, description: 'Custom product not found' })
   async update(
     @GetUser() user: User,
-    @Param('orderRequestId') orderRequestId: string,
+    @Param('customProductId') customProductId: string,
     @Query('replaceImages') replaceImages: string,
     @Body() updateCustomProductDto: UpdateCustomProductDto,
     @UploadedFiles() files?: Express.Multer.File[],
@@ -197,8 +197,8 @@ export class CustomProductController {
 
     const shouldReplaceImages = replaceImages === 'true';
 
-    return this.customProductService.update(
-      +orderRequestId,
+    return this.customProductService.updateById(
+      +customProductId,
       user.id,
       user.role,
       updateCustomProductDto,
@@ -207,9 +207,9 @@ export class CustomProductController {
     );
   }
 
-  @Delete('/:orderRequestId')
+  @Delete('/:customProductId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete custom product by order request ID' })
+  @ApiOperation({ summary: 'Delete custom product by ID' })
   @ApiResponse({
     status: 204,
     description: 'Custom product deleted successfully',
@@ -219,10 +219,10 @@ export class CustomProductController {
   @ApiResponse({ status: 404, description: 'Custom product not found' })
   remove(
     @GetUser() user: User,
-    @Param('orderRequestId') orderRequestId: string,
+    @Param('customProductId') customProductId: string,
   ) {
-    return this.customProductService.remove(
-      +orderRequestId,
+    return this.customProductService.removeById(
+      +customProductId,
       user.id,
       user.role,
     );

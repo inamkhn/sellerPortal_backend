@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
 import { CreateOrderRequestDto, OrderType } from './dto';
@@ -12,6 +13,8 @@ import { OrderRequestQueryDto } from './dto/order-request-query.dto';
 
 @Injectable()
 export class OrderRequestService {
+  private readonly logger = new Logger(OrderRequestService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(
@@ -111,7 +114,7 @@ export class OrderRequestService {
           where: { id: orderRequest.id },
           include: {
             product: true,
-            customProduct: {
+            customProducts: {
               include: {
                 category: true,
               },
@@ -204,7 +207,7 @@ export class OrderRequestService {
               photos: true,
             },
           },
-          customProduct: {
+          customProducts: {
             include: {
               category: {
                 select: {
@@ -248,7 +251,7 @@ export class OrderRequestService {
             material: true,
           },
         },
-        customProduct: {
+        customProducts: {
           include: {
             category: {
               select: {
@@ -431,7 +434,7 @@ export class OrderRequestService {
             material: true,
           },
         },
-        customProduct: {
+        customProducts: {
           include: {
             category: {
               select: {
@@ -455,8 +458,77 @@ export class OrderRequestService {
             },
           },
         },
+        orderSettlements: true,
       },
     });
+
+    // Auto-create OrderSettlement when status changes to DELIVERED or PARTIALLY_DELIVERED
+    if (
+      userRole === 'ADMIN' &&
+      updateData.status &&
+      (updateData.status === OrderStatus.DELIVERED ||
+        updateData.status === OrderStatus.PARTIALLY_DELIVERED) &&
+      existingOrder.status !== updateData.status
+    ) {
+      try {
+        // Check if OrderSettlement already exists
+        const existingSettlement = await this.prisma.orderSettlement.findFirst({
+          where: { orderRequestId },
+        });
+
+        if (!existingSettlement) {
+          this.logger.log(
+            `Auto-creating OrderSettlement for order ${orderRequestId}`,
+          );
+
+          // Get seller info for referrer details
+          const orderWithUser = await this.prisma.orderRequest.findUnique({
+            where: { id: orderRequestId },
+            include: {
+              user: {
+                include: {
+                  profile: {
+                    include: {
+                      referrer: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          const referrerId = orderWithUser?.user.profile?.referredBy;
+          const referrerRole = orderWithUser?.user.profile?.referrer?.role;
+
+          // Create OrderSettlement with placeholder values
+          await this.prisma.orderSettlement.create({
+            data: {
+              orderRequestId,
+              totalAmount: updatedOrder.decidedPrice,
+              productCost: new Prisma.Decimal(0),
+              adminCommission: new Prisma.Decimal(0),
+              grossSellerAmount: new Prisma.Decimal(0),
+              referralCommission: null,
+              referralCommissionRate: null,
+              isFixedCommission: false,
+              netSellerAmount: new Prisma.Decimal(0),
+              referrerId: referrerId || null,
+              referrerRole: referrerRole || null,
+              status: 'PENDING',
+            },
+          });
+
+          this.logger.log(
+            `OrderSettlement created for order ${orderRequestId}. Admin can now fill in the amounts.`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `Failed to create OrderSettlement for order ${orderRequestId}`,
+          error,
+        );
+      }
+    }
 
     return updatedOrder;
   }

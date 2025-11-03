@@ -2,7 +2,7 @@ import {
   Controller,
   Get,
   Post,
-  Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -121,7 +121,8 @@ export class ProfileController {
   @Get()
   @ApiOperation({
     summary: 'Get user profile',
-    description: 'Retrieves the profile of the authenticated user',
+    description:
+      'Retrieves the profile of the authenticated user with referral information',
   })
   @ApiOkResponse({
     description: 'Profile retrieved successfully',
@@ -149,6 +150,23 @@ export class ProfileController {
           lastName: 'Doe',
           role: 'USER',
           isVerified: true,
+          referredUsers: [
+            {
+              id: 2,
+              userId: 2,
+              fullName: 'Jane Smith',
+              referralCode: 'XYZ98765',
+              verified: false,
+              createdAt: '2024-02-01T00:00:00.000Z',
+              user: {
+                id: 2,
+                email: 'jane@example.com',
+                firstName: 'Jane',
+                lastName: 'Smith',
+                createdAt: '2024-02-01T00:00:00.000Z',
+              },
+            },
+          ],
         },
         referrer: null,
       },
@@ -174,14 +192,15 @@ export class ProfileController {
       },
     },
   })
-  async getProfile(@GetUser() user: User): Promise<Profile> {
+  async getProfile(@GetUser() user: User): Promise<any> {
     return this.profileService.getProfile(user.id);
   }
 
-  @Put()
+  @Patch()
   @ApiOperation({
     summary: 'Update user profile',
-    description: 'Updates the profile of the authenticated user',
+    description:
+      'Partially updates the profile of the authenticated user. Only provided fields will be updated.',
   })
   @ApiOkResponse({
     description: 'Profile updated successfully',

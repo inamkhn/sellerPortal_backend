@@ -441,7 +441,7 @@ async function main() {
       referrerRole: Role.USER,
       adminSettledBy: admin.id,
       adminSettledAt: new Date('2024-02-23'),
-      status: 'PAID' as const,
+      status: 'SETTLED' as const,
       createdAt: new Date('2024-02-22'),
       updatedAt: new Date('2024-02-23'),
     },

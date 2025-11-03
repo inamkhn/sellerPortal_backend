@@ -90,7 +90,7 @@ export class ProfileService {
     return profile;
   }
 
-  async getProfile(userId: number): Promise<Profile> {
+  async getProfile(userId: number): Promise<any> {
     const profile = await this.prisma.profile.findUnique({
       where: { userId },
       include: {
@@ -102,6 +102,19 @@ export class ProfileService {
             lastName: true,
             role: true,
             isVerified: true,
+            referredUsers: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    createdAt: true,
+                  },
+                },
+              },
+            },
           },
         },
         referrer: {
@@ -426,7 +439,11 @@ export class ProfileService {
         ownerId: true,
         title: true,
         price: true,
-        category: true,
+        category: {
+          select: {
+            name: true,
+          },
+        },
         condition: true,
         sku: true,
         facebookPostingStatus: true,

@@ -285,4 +285,317 @@ export class DashboardService {
       averageOrderValue,
     };
   }
+
+  // Admin Dashboard Stats
+  async getAdminStats() {
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+    );
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const startOfTwoMonthsAgo = new Date(
+      now.getFullYear(),
+      now.getMonth() - 2,
+      1,
+    );
+    const endOfTwoMonthsAgo = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      0,
+      23,
+      59,
+      59,
+    );
+
+    // Parallel queries for better performance
+    const [
+      totalUsers,
+      lastMonthUsers,
+      twoMonthsAgoUsers,
+      totalOrdersThisMonth,
+      totalOrdersLastMonth,
+      pendingOrders,
+      ordersToday,
+      lastMonthRevenue,
+      twoMonthsAgoRevenue,
+      lastMonthCommission,
+      twoMonthsAgoCommission,
+      pendingSettlements,
+      activeSellers,
+      deliveredOrders,
+      totalOrders,
+    ] = await Promise.all([
+      // Total users
+      this.prisma.user.count(),
+
+      // Last month users
+      this.prisma.user.count({
+        where: {
+          createdAt: {
+            gte: startOfLastMonth,
+            lte: endOfLastMonth,
+          },
+        },
+      }),
+
+      // Two months ago users (for growth calculation)
+      this.prisma.user.count({
+        where: {
+          createdAt: {
+            gte: startOfTwoMonthsAgo,
+            lte: endOfTwoMonthsAgo,
+          },
+        },
+      }),
+
+      // Total orders this month
+      this.prisma.orderRequest.count({
+        where: {
+          createdAt: {
+            gte: startOfThisMonth,
+          },
+        },
+      }),
+
+      // Total orders last month
+      this.prisma.orderRequest.count({
+        where: {
+          createdAt: {
+            gte: startOfLastMonth,
+            lte: endOfLastMonth,
+          },
+        },
+      }),
+
+      // Pending orders
+      this.prisma.orderRequest.count({
+        where: { status: 'PENDING' },
+      }),
+
+      // Orders today
+      this.prisma.orderRequest.count({
+        where: {
+          createdAt: {
+            gte: startOfToday,
+          },
+        },
+      }),
+
+      // Last month revenue (DELIVERED orders)
+      this.prisma.orderRequest.aggregate({
+        where: {
+          status: 'DELIVERED',
+          updatedAt: {
+            gte: startOfLastMonth,
+            lte: endOfLastMonth,
+          },
+        },
+        _sum: { decidedPrice: true },
+      }),
+
+      // Two months ago revenue
+      this.prisma.orderRequest.aggregate({
+        where: {
+          status: 'DELIVERED',
+          updatedAt: {
+            gte: startOfTwoMonthsAgo,
+            lte: endOfTwoMonthsAgo,
+          },
+        },
+        _sum: { decidedPrice: true },
+      }),
+
+      // Last month admin commission
+      this.prisma.orderSettlement.aggregate({
+        where: {
+          createdAt: {
+            gte: startOfLastMonth,
+            lte: endOfLastMonth,
+          },
+        },
+        _sum: { adminCommission: true },
+      }),
+
+      // Two months ago admin commission
+      this.prisma.orderSettlement.aggregate({
+        where: {
+          createdAt: {
+            gte: startOfTwoMonthsAgo,
+            lte: endOfTwoMonthsAgo,
+          },
+        },
+        _sum: { adminCommission: true },
+      }),
+
+      // Pending settlements
+      this.prisma.orderSettlement.count({
+        where: { status: 'PENDING' },
+      }),
+
+      // Active sellers (users with role USER who have order requests)
+      this.prisma.user.count({
+        where: {
+          role: 'USER',
+          orderRequests: {
+            some: {},
+          },
+        },
+      }),
+
+      // Delivered orders (for success rate)
+      this.prisma.orderRequest.count({
+        where: { status: 'DELIVERED' },
+      }),
+
+      // Total orders (for success rate)
+      this.prisma.orderRequest.count(),
+    ]);
+
+    // Calculate metrics
+    const totalRevenue = Number(lastMonthRevenue._sum.decidedPrice || 0);
+    const twoMonthsRevenue = Number(twoMonthsAgoRevenue._sum.decidedPrice || 0);
+    const adminCommission = Number(
+      lastMonthCommission._sum.adminCommission || 0,
+    );
+    const twoMonthsCommission = Number(
+      twoMonthsAgoCommission._sum.adminCommission || 0,
+    );
+
+    const usersGrowth = this.calculateGrowth(lastMonthUsers, twoMonthsAgoUsers);
+    const ordersGrowth = this.calculateGrowth(
+      totalOrdersThisMonth,
+      totalOrdersLastMonth,
+    );
+    const revenueGrowth = this.calculateGrowth(totalRevenue, twoMonthsRevenue);
+    const commissionGrowth = this.calculateGrowth(
+      adminCommission,
+      twoMonthsCommission,
+    );
+    const successRate =
+      totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0;
+
+    return {
+      totalUsers,
+      lastMonthUsers,
+      usersGrowth: Number(usersGrowth.toFixed(1)),
+      totalOrders: totalOrdersThisMonth,
+      pendingOrders,
+      ordersToday,
+      ordersGrowth: Number(ordersGrowth.toFixed(1)),
+      totalRevenue: Number(totalRevenue.toFixed(2)),
+      adminCommission: Number(adminCommission.toFixed(2)),
+      revenueGrowth: Number(revenueGrowth.toFixed(1)),
+      commissionGrowth: Number(commissionGrowth.toFixed(1)),
+      pendingSettlements,
+      activeSellers,
+      successRate: Number(successRate.toFixed(1)),
+    };
+  }
+
+  // Revenue Trend
+  async getRevenueTrend(months: number = 12) {
+    const now = new Date();
+    const startDate = new Date(
+      now.getFullYear(),
+      now.getMonth() - months + 1,
+      1,
+    );
+
+    // Get all delivered orders from the start date
+    const orders = await this.prisma.orderRequest.findMany({
+      where: {
+        status: 'DELIVERED',
+        updatedAt: {
+          gte: startDate,
+        },
+      },
+      select: {
+        decidedPrice: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: 'asc',
+      },
+    });
+
+    // Group by month and calculate revenue
+    const monthlyRevenue = new Map<string, number>();
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    orders.forEach((order) => {
+      const date = new Date(order.updatedAt);
+      const monthKey = monthNames[date.getMonth()];
+      const currentRevenue = monthlyRevenue.get(monthKey) || 0;
+      monthlyRevenue.set(monthKey, currentRevenue + Number(order.decidedPrice));
+    });
+
+    // Convert to array format
+    const data = Array.from(monthlyRevenue.entries()).map(([label, value]) => ({
+      label,
+      value: Number(value.toFixed(2)),
+    }));
+
+    return { data };
+  }
+
+  // Orders by Status
+  async getOrdersByStatus() {
+    const statusColors = {
+      PENDING: '#F59E0B',
+      CONFIRMED: '#3B82F6',
+      IN_PROGRESS: '#8B5CF6',
+      DELIVERED: '#10B981',
+      CANCELLED: '#EF4444',
+      PAYMENT_PENDING: '#F97316',
+      PARTIALLY_DELIVERED: '#14B8A6',
+    };
+
+    const statusLabels = {
+      PENDING: 'Pending',
+      CONFIRMED: 'Confirmed',
+      IN_PROGRESS: 'In Progress',
+      DELIVERED: 'Delivered',
+      CANCELLED: 'Cancelled',
+      PAYMENT_PENDING: 'Payment Pending',
+      PARTIALLY_DELIVERED: 'Partially Delivered',
+    };
+
+    // Get order counts by status
+    const orderCounts = await this.prisma.orderRequest.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    });
+
+    return {
+      data: orderCounts.map((item) => ({
+        label: statusLabels[item.status] || item.status,
+        value: item._count.status,
+        color: statusColors[item.status] || '#6B7280',
+      })),
+    };
+  }
 }

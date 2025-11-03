@@ -68,26 +68,26 @@ export class UpdateProfileDto {
   accountNumber?: string;
 
   @ApiProperty({
-    description: 'Facebook profile link',
+    description: 'Facebook profile link (optional, can be empty)',
     example: 'https://facebook.com/johndoe.updated',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Facebook profile URL',
+  @Matches(/^(https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+)?$/, {
+    message: 'Please provide a valid Facebook profile URL or leave empty',
   })
   facebookLink?: string;
 
   @ApiProperty({
-    description: 'Dubizzle profile link',
+    description: 'Dubizzle profile link (optional, can be empty)',
     example: 'https://dubizzle.com/users/johndoe.updated',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Dubizzle profile URL',
+  @Matches(/^(https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+)?$/, {
+    message: 'Please provide a valid Dubizzle profile URL or leave empty',
   })
   dubizzleLink?: string;
 

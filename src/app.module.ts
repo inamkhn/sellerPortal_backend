@@ -16,6 +16,11 @@ import { CategoryModule } from './category/category.module';
 import { OrderRequestModule } from './order-request/order-request.module';
 import { CustomProductModule } from './custom-product/custom-product.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { OrderSettlementModule } from './order-settlement/order-settlement.module';
+import { SettlementModule } from './settlement/settlement.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { UsersModule } from './users/users.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
 @Module({
@@ -89,6 +94,11 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     OrderRequestModule,
     CustomProductModule,
     DashboardModule,
+    OrderSettlementModule,
+    SettlementModule,
+    ReferralsModule,
+    UsersModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

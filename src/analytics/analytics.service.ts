@@ -1,0 +1,761 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../database/database.service';
+import { DateRange } from './dto/analytics-query.dto';
+import {
+  MetricsData,
+  ChartsData,
+  OverviewResponse,
+  TopPerformersResponse,
+  DateRangeResult,
+  ChartDataPoint,
+  DetailedReportsResponse,
+  SellerDetail,
+  ProductDetail,
+  PaginationMeta,
+} from './interfaces/analytics.interface';
+import { OrderStatus, Role } from '@prisma/client';
+
+@Injectable()
+export class AnalyticsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Calculate date ranges based on selection
+  private calculateDateRange(dateRange: DateRange): DateRangeResult {
+    const endDate = new Date();
+    const startDate = new Date();
+    const previousEndDate = new Date();
+    const previousStartDate = new Date();
+
+    switch (dateRange) {
+      case DateRange.SEVEN_DAYS:
+        startDate.setDate(endDate.getDate() - 7);
+        previousEndDate.setDate(startDate.getDate() - 1);
+        previousStartDate.setDate(previousEndDate.getDate() - 7);
+        break;
+      case DateRange.THIRTY_DAYS:
+        startDate.setDate(endDate.getDate() - 30);
+        previousEndDate.setDate(startDate.getDate() - 1);
+        previousStartDate.setDate(previousEndDate.getDate() - 30);
+        break;
+      case DateRange.NINETY_DAYS:
+        startDate.setDate(endDate.getDate() - 90);
+        previousEndDate.setDate(startDate.getDate() - 1);
+        previousStartDate.setDate(previousEndDate.getDate() - 90);
+        break;
+      case DateRange.TWELVE_MONTHS:
+        startDate.setMonth(endDate.getMonth() - 12);
+        previousEndDate.setMonth(startDate.getMonth() - 1);
+        previousStartDate.setMonth(previousEndDate.getMonth() - 12);
+        break;
+      case DateRange.ALL_TIME:
+        startDate.setFullYear(2000, 0, 1);
+        previousStartDate.setFullYear(2000, 0, 1);
+        previousEndDate.setFullYear(2000, 0, 1);
+        break;
+    }
+
+    return { startDate, endDate, previousStartDate, previousEndDate };
+  }
+
+  // Calculate growth percentage
+  private calculateGrowth(current: number, previous: number): number {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Number((((current - previous) / previous) * 100).toFixed(1));
+  }
+
+  // Get overview data (metrics + charts)
+  async getOverview(dateRange: DateRange): Promise<OverviewResponse> {
+    const { startDate, endDate, previousStartDate, previousEndDate } =
+      this.calculateDateRange(dateRange);
+
+    // Fetch metrics and charts in parallel
+    const [metrics, charts] = await Promise.all([
+      this.getMetrics(startDate, endDate, previousStartDate, previousEndDate),
+      this.getCharts(startDate, endDate, dateRange),
+    ]);
+
+    return { metrics, charts };
+  }
+
+  // Get metrics data
+  private async getMetrics(
+    startDate: Date,
+    endDate: Date,
+    previousStartDate: Date,
+    previousEndDate: Date,
+  ): Promise<MetricsData> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    // Current period metrics
+    const [currentRevenue, currentOrders, currentCommission, currentUsers] =
+      await Promise.all([
+        // Total Revenue
+        this.prisma.orderRequest.aggregate({
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          _sum: { decidedPrice: true },
+        }),
+        // Total Orders
+        this.prisma.orderRequest.count({
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        }),
+        // Platform Commission
+        this.prisma.orderSettlement.aggregate({
+          where: {
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          _sum: { adminCommission: true },
+        }),
+        // Active Users
+        this.prisma.user.count({
+          where: {
+            orderRequests: {
+              some: {
+                status: { in: deliveredStatuses },
+                createdAt: { gte: startDate, lte: endDate },
+              },
+            },
+          },
+        }),
+      ]);
+
+    // Previous period metrics
+    const [previousRevenue, previousOrders, previousCommission, previousUsers] =
+      await Promise.all([
+        this.prisma.orderRequest.aggregate({
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+          _sum: { decidedPrice: true },
+        }),
+        this.prisma.orderRequest.count({
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+        }),
+        this.prisma.orderSettlement.aggregate({
+          where: {
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+          _sum: { adminCommission: true },
+        }),
+        this.prisma.user.count({
+          where: {
+            orderRequests: {
+              some: {
+                status: { in: deliveredStatuses },
+                createdAt: { gte: previousStartDate, lte: previousEndDate },
+              },
+            },
+          },
+        }),
+      ]);
+
+    const totalRevenue = Number(currentRevenue._sum.decidedPrice || 0);
+    const prevRevenue = Number(previousRevenue._sum.decidedPrice || 0);
+    const totalOrders = currentOrders;
+    const prevOrders = previousOrders;
+    const platformCommission = Number(
+      currentCommission._sum.adminCommission || 0,
+    );
+    const prevCommission = Number(previousCommission._sum.adminCommission || 0);
+    const activeUsers = currentUsers;
+    const prevUsers = previousUsers;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    const prevAvgOrderValue = prevOrders > 0 ? prevRevenue / prevOrders : 0;
+
+    return {
+      totalRevenue,
+      revenueGrowth: this.calculateGrowth(totalRevenue, prevRevenue),
+      totalOrders,
+      ordersGrowth: this.calculateGrowth(totalOrders, prevOrders),
+      platformCommission,
+      commissionGrowth: this.calculateGrowth(
+        platformCommission,
+        prevCommission,
+      ),
+      activeUsers,
+      usersGrowth: this.calculateGrowth(activeUsers, prevUsers),
+      avgOrderValue: Number(avgOrderValue.toFixed(2)),
+      avgGrowth: this.calculateGrowth(avgOrderValue, prevAvgOrderValue),
+    };
+  }
+
+  // Get charts data
+  private async getCharts(
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartsData> {
+    const [revenueOverTime, ordersByStatus, revenueByCategory] =
+      await Promise.all([
+        this.getRevenueOverTime(startDate, endDate, dateRange),
+        this.getOrdersByStatus(startDate, endDate),
+        this.getRevenueByCategory(startDate, endDate),
+      ]);
+
+    return { revenueOverTime, ordersByStatus, revenueByCategory };
+  }
+
+  // Revenue over time chart
+  private async getRevenueOverTime(
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const orders = await this.prisma.orderRequest.findMany({
+      where: {
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        decidedPrice: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(orders, dateRange);
+  }
+
+  // Group data by time period
+  private groupByPeriod(
+    orders: { decidedPrice: any; createdAt: Date }[],
+    dateRange: DateRange,
+  ): ChartDataPoint[] {
+    const grouped = new Map<string, number>();
+
+    orders.forEach((order) => {
+      const date = new Date(order.createdAt);
+      let key: string;
+
+      if (dateRange === DateRange.TWELVE_MONTHS) {
+        key = date.toLocaleString('default', { month: 'short' });
+      } else if (dateRange === DateRange.NINETY_DAYS) {
+        const weekNum = Math.floor(
+          (date.getTime() - orders[0].createdAt.getTime()) /
+            (7 * 24 * 60 * 60 * 1000),
+        );
+        key = `Week ${weekNum + 1}`;
+      } else {
+        key = date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        });
+      }
+
+      const current = grouped.get(key) || 0;
+      grouped.set(key, current + Number(order.decidedPrice));
+    });
+
+    return Array.from(grouped.entries()).map(([label, value]) => ({
+      label,
+      value: Number(value.toFixed(2)),
+    }));
+  }
+
+  // Orders by status chart
+  private async getOrdersByStatus(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<ChartDataPoint[]> {
+    const statusColors: Record<string, string> = {
+      DELIVERED: '#10b981',
+      IN_PROGRESS: '#3b82f6',
+      PENDING: '#f59e0b',
+      CANCELLED: '#ef4444',
+      CONFIRMED: '#8b5cf6',
+      PAYMENT_PENDING: '#ec4899',
+      PARTIALLY_DELIVERED: '#06b6d4',
+    };
+
+    const statusLabels: Record<string, string> = {
+      DELIVERED: 'Delivered',
+      IN_PROGRESS: 'In Progress',
+      PENDING: 'Pending',
+      CANCELLED: 'Cancelled',
+      CONFIRMED: 'Confirmed',
+      PAYMENT_PENDING: 'Payment Pending',
+      PARTIALLY_DELIVERED: 'Partially Delivered',
+    };
+
+    const ordersByStatus = await this.prisma.orderRequest.groupBy({
+      by: ['status'],
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _count: { id: true },
+    });
+
+    return ordersByStatus.map((item) => ({
+      label: statusLabels[item.status] || item.status,
+      value: item._count.id,
+      color: statusColors[item.status] || '#6b7280',
+    }));
+  }
+
+  // Revenue by category chart
+  private async getRevenueByCategory(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const categoryColors = [
+      '#3b82f6',
+      '#8b5cf6',
+      '#ec4899',
+      '#f59e0b',
+      '#10b981',
+      '#06b6d4',
+    ];
+
+    const orders = await this.prisma.orderRequest.findMany({
+      where: {
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+        productId: { not: null },
+      },
+      select: {
+        decidedPrice: true,
+        product: {
+          select: {
+            category: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+    });
+
+    const grouped = new Map<string, number>();
+
+    orders.forEach((order) => {
+      const categoryName = order.product?.category?.name || 'Other';
+      const current = grouped.get(categoryName) || 0;
+      grouped.set(categoryName, current + Number(order.decidedPrice));
+    });
+
+    return Array.from(grouped.entries())
+      .map(([label, value], index) => ({
+        label,
+        value: Number(value.toFixed(2)),
+        color: categoryColors[index % categoryColors.length],
+      }))
+      .sort((a, b) => b.value - a.value);
+  }
+
+  // Get top performers data
+  async getTopPerformers(
+    dateRange: DateRange,
+    limit: number = 10,
+  ): Promise<TopPerformersResponse> {
+    const { startDate, endDate } = this.calculateDateRange(dateRange);
+
+    const [
+      topSellers,
+      topProducts,
+      topReferralManagers,
+      referralManagerEarnings,
+    ] = await Promise.all([
+      this.getTopSellers(startDate, endDate, limit),
+      this.getTopProducts(startDate, endDate, limit),
+      this.getTopReferralManagers(startDate, endDate, limit),
+      this.getReferralManagerEarnings(startDate, endDate, dateRange),
+    ]);
+
+    return {
+      topSellers,
+      topProducts,
+      topReferralManagers,
+      referralManagerEarnings,
+    };
+  }
+
+  // Top sellers by revenue
+  private async getTopSellers(
+    startDate: Date,
+    endDate: Date,
+    limit: number,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const topSellers = await this.prisma.orderRequest.groupBy({
+      by: ['userId'],
+      where: {
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _sum: { decidedPrice: true },
+      orderBy: { _sum: { decidedPrice: 'desc' } },
+      take: limit,
+    });
+
+    const userIds = topSellers.map((s) => s.userId);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        profile: { select: { fullName: true } },
+      },
+    });
+
+    return topSellers.map((seller) => {
+      const user = users.find((u) => u.id === seller.userId);
+      const name =
+        user?.profile?.fullName ||
+        `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+        'Unknown';
+
+      return {
+        label: name,
+        value: Number(seller._sum.decidedPrice || 0),
+      };
+    });
+  }
+
+  // Top products by quantity sold
+  private async getTopProducts(
+    startDate: Date,
+    endDate: Date,
+    limit: number,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const topProducts = await this.prisma.orderRequest.groupBy({
+      by: ['productId'],
+      where: {
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+        productId: { not: null },
+      },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: limit,
+    });
+
+    const productIds = topProducts
+      .map((p) => p.productId)
+      .filter((id): id is number => id !== null);
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, title: true },
+    });
+
+    return topProducts
+      .filter((item) => item.productId !== null)
+      .map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        return {
+          label: product?.title || 'Unknown Product',
+          value: item._count.id,
+        };
+      });
+  }
+
+  // Top referral managers by earnings
+  private async getTopReferralManagers(
+    startDate: Date,
+    endDate: Date,
+    limit: number,
+  ): Promise<ChartDataPoint[]> {
+    const topManagers = await this.prisma.settlement.groupBy({
+      by: ['userId'],
+      where: {
+        settlementType: 'REFERRAL_PAYMENT',
+        status: { in: ['PAID', 'PENDING'] },
+        createdAt: { gte: startDate, lte: endDate },
+        user: { role: Role.REFERRAL_MANAGER },
+      },
+      _sum: { amount: true },
+      orderBy: { _sum: { amount: 'desc' } },
+      take: limit,
+    });
+
+    const managerIds = topManagers.map((m) => m.userId);
+    const managers = await this.prisma.user.findMany({
+      where: { id: { in: managerIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        profile: { select: { fullName: true } },
+      },
+    });
+
+    return topManagers.map((manager) => {
+      const user = managers.find((u) => u.id === manager.userId);
+      const name =
+        user?.profile?.fullName ||
+        `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+        'Unknown';
+
+      return {
+        label: name,
+        value: Number(manager._sum.amount || 0),
+      };
+    });
+  }
+
+  // Referral manager earnings over time
+  private async getReferralManagerEarnings(
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const earnings = await this.prisma.settlement.findMany({
+      where: {
+        settlementType: 'REFERRAL_PAYMENT',
+        status: { in: ['PAID', 'PENDING'] },
+        createdAt: { gte: startDate, lte: endDate },
+        user: { role: Role.REFERRAL_MANAGER },
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(
+      earnings.map((e) => ({
+        decidedPrice: e.amount,
+        createdAt: e.createdAt,
+      })),
+      dateRange,
+    );
+  }
+
+  // Get detailed reports with pagination
+  async getDetailedReports(
+    dateRange: DateRange,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<DetailedReportsResponse> {
+    const { startDate, endDate } = this.calculateDateRange(dateRange);
+
+    const [topSellers, topProducts] = await Promise.all([
+      this.getTopSellersDetailed(startDate, endDate, page, limit),
+      this.getTopProductsDetailed(startDate, endDate, page, limit),
+    ]);
+
+    return { topSellers, topProducts };
+  }
+
+  // Top sellers detailed with pagination
+  private async getTopSellersDetailed(
+    startDate: Date,
+    endDate: Date,
+    page: number,
+    limit: number,
+  ): Promise<{ data: SellerDetail[]; pagination: PaginationMeta }> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const totalSellers = await this.prisma.user.count({
+      where: {
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+    });
+
+    // Get sellers with their orders
+    const sellers = await this.prisma.user.findMany({
+      where: {
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        profile: {
+          select: { fullName: true },
+        },
+        orderRequests: {
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          select: {
+            decidedPrice: true,
+            orderSettlements: {
+              select: {
+                adminCommission: true,
+              },
+            },
+          },
+        },
+      },
+      skip,
+      take: limit,
+    });
+
+    // Format data
+    const data = sellers.map((seller) => {
+      const orders = seller.orderRequests.length;
+      const revenue = seller.orderRequests.reduce(
+        (sum, order) => sum + Number(order.decidedPrice),
+        0,
+      );
+      const commission = seller.orderRequests.reduce(
+        (sum, order) =>
+          sum + Number(order.orderSettlements[0]?.adminCommission || 0),
+        0,
+      );
+
+      return {
+        id: seller.id,
+        name:
+          seller.profile?.fullName ||
+          `${seller.firstName || ''} ${seller.lastName || ''}`.trim() ||
+          'Unknown',
+        email: seller.email,
+        orders,
+        revenue: Number(revenue.toFixed(2)),
+        commission: Number(commission.toFixed(2)),
+      };
+    });
+
+    // Sort by revenue descending
+    data.sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      data,
+      pagination: {
+        total: totalSellers,
+        page,
+        limit,
+        totalPages: Math.ceil(totalSellers / limit),
+      },
+    };
+  }
+
+  // Top products detailed with pagination
+  private async getTopProductsDetailed(
+    startDate: Date,
+    endDate: Date,
+    page: number,
+    limit: number,
+  ): Promise<{ data: ProductDetail[]; pagination: PaginationMeta }> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const totalProducts = await this.prisma.product.count({
+      where: {
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+    });
+
+    // Get products with their orders
+    const products = await this.prisma.product.findMany({
+      where: {
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        category: {
+          select: { name: true },
+        },
+        orderRequests: {
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          select: {
+            decidedPrice: true,
+          },
+        },
+      },
+      skip,
+      take: limit,
+    });
+
+    // Format data
+    const data = products.map((product) => {
+      const sold = product.orderRequests.length;
+      const revenue = product.orderRequests.reduce(
+        (sum, order) => sum + Number(order.decidedPrice),
+        0,
+      );
+      const avgPrice = sold > 0 ? revenue / sold : 0;
+
+      return {
+        id: product.id,
+        name: product.title,
+        category: product.category.name,
+        sold,
+        revenue: Number(revenue.toFixed(2)),
+        avgPrice: Number(avgPrice.toFixed(2)),
+      };
+    });
+
+    // Sort by sold quantity descending
+    data.sort((a, b) => b.sold - a.sold);
+
+    return {
+      data,
+      pagination: {
+        total: totalProducts,
+        page,
+        limit,
+        totalPages: Math.ceil(totalProducts / limit),
+      },
+    };
+  }
+}
