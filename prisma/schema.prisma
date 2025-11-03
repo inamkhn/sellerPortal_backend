@@ -334,7 +334,7 @@ enum OrderSettlementStatus {
   PENDING
   CANCELLED
 
-  @@map("OrderSettlement_status")
+  @@map("order_settlement_status")
 }
 
 enum SettlementType {
