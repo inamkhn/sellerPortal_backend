@@ -21,6 +21,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { UsersModule } from './users/users.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { ChatModule } from './chat/chat.module';
 import facebookConfig from './facebook-integration/config/facebook.config';
 
 @Module({
@@ -99,6 +100,7 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     ReferralsModule,
     UsersModule,
     AnalyticsModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
