@@ -15,7 +15,7 @@ import { OrderRequestQueryDto } from './dto/order-request-query.dto';
 export class OrderRequestService {
   private readonly logger = new Logger(OrderRequestService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(
     userId: number,
@@ -70,14 +70,6 @@ export class OrderRequestService {
             : null,
           status: 'PENDING',
         },
-        include: {
-          product: true,
-          user: {
-            include: {
-              profile: true,
-            },
-          },
-        },
       });
 
       // Create CustomProduct if needed
@@ -108,27 +100,25 @@ export class OrderRequestService {
             images: imageUrls,
           },
         });
-
-        // Fetch the complete order with custom product
-        return await tx.orderRequest.findUnique({
-          where: { id: orderRequest.id },
-          include: {
-            product: true,
-            customProducts: {
-              include: {
-                category: true,
-              },
-            },
-            user: {
-              include: {
-                profile: true,
-              },
-            },
-          },
-        });
       }
 
-      return orderRequest;
+      // Fetch the complete order with all relations (consistent for both types)
+      return await tx.orderRequest.findUnique({
+        where: { id: orderRequest.id },
+        include: {
+          product: true,
+          customProducts: {
+            include: {
+              category: true,
+            },
+          },
+          user: {
+            include: {
+              profile: true,
+            },
+          },
+        },
+      });
     });
   }
 
