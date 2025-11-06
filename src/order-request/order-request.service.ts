@@ -15,7 +15,7 @@ import { OrderRequestQueryDto } from './dto/order-request-query.dto';
 export class OrderRequestService {
   private readonly logger = new Logger(OrderRequestService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(
     userId: number,

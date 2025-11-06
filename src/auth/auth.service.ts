@@ -53,6 +53,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      isVerified: user.isVerified,
     };
 
     // Generate access token with longer expiry since no refresh token

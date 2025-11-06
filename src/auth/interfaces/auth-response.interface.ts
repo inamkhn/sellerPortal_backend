@@ -23,6 +23,7 @@ export interface TokenPayload {
   sub: number;
   email: string;
   role: Role;
+  isVerified: boolean;
   iat?: number;
   exp?: number;
 }
