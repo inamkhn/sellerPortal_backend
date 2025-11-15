@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
 import { UploadService } from '../upload/upload.service';
-import { ChatRoomType, MessageType } from '@prisma/client';
+import { ChatRoomType, MessageType, OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
@@ -163,6 +163,7 @@ export class ChatService {
 
   /**
    * Get user's chat rooms with filters and pagination
+   * OPTIMIZED: Reduced includes and separate unread count query
    */
   async getUserChatRooms(
     userId: number,
@@ -206,6 +207,9 @@ export class ChatService {
         where,
         include: {
           participants: {
+            where: {
+              userId: { not: userId }, // Only fetch other participants
+            },
             include: {
               user: {
                 select: {
@@ -222,7 +226,12 @@ export class ChatService {
           messages: {
             take: 1,
             orderBy: { createdAt: 'desc' },
-            include: {
+            select: {
+              id: true,
+              content: true,
+              messageType: true,
+              createdAt: true,
+              senderId: true,
               sender: {
                 select: {
                   id: true,
@@ -240,20 +249,30 @@ export class ChatService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    // Format response with unread count for current user
-    const formattedRooms = chatRooms.map((room) => {
-      const currentUserParticipant = room.participants.find(
-        (p) => p.userId === userId,
-      );
+    // Get current user's participant data separately
+    const userParticipants = await this.prisma.chatParticipant.findMany({
+      where: {
+        chatRoomId: { in: chatRooms.map((r) => r.id) },
+        userId,
+      },
+      select: {
+        chatRoomId: true,
+        unreadCount: true,
+      },
+    });
 
+    const unreadMap = new Map(
+      userParticipants.map((p) => [p.chatRoomId, p.unreadCount]),
+    );
+
+    // Format response with pre-fetched data
+    const formattedRooms = chatRooms.map((room) => {
       return {
         id: room.id,
         type: room.type,
         lastMessageAt: room.lastMessageAt,
-        unreadCount: currentUserParticipant?.unreadCount || 0,
-        participants: room.participants
-          .filter((p) => p.userId !== userId)
-          .map((p) => p.user),
+        unreadCount: unreadMap.get(room.id) || 0,
+        participants: room.participants.map((p) => p.user),
         lastMessage: room.messages[0] || null,
         createdAt: room.createdAt,
       };
@@ -487,7 +506,69 @@ export class ChatService {
   }
 
   /**
+   * Send a message with file attachment and optional text content
+   */
+  async sendMessageWithFile(
+    roomId: number,
+    senderId: number,
+    file: Express.Multer.File,
+    content: string,
+    messageType: string,
+  ) {
+    // Validate user is participant
+    await this.validateChatRoomAccess(roomId, senderId);
+
+    // Upload file using upload service (works for all file types)
+    const uploadResult = await this.uploadService.uploadImage(file, 'chat');
+
+    // Create message with file info and content
+    const message = await this.prisma.chatMessage.create({
+      data: {
+        chatRoomId: roomId,
+        senderId,
+        content: content || null,
+        messageType: messageType as MessageType,
+        fileUrl: uploadResult.secure_url,
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        status: 'SENT',
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+
+    // Update chat room lastMessageAt
+    await this.prisma.chatRoom.update({
+      where: { id: roomId },
+      data: { lastMessageAt: new Date() },
+    });
+
+    // Increment unread count for all participants except sender
+    await this.prisma.chatParticipant.updateMany({
+      where: {
+        chatRoomId: roomId,
+        userId: { not: senderId },
+      },
+      data: {
+        unreadCount: { increment: 1 },
+      },
+    });
+
+    return message;
+  }
+
+  /**
    * Get messages with cursor-based pagination
+   * OPTIMIZED: Reduced select fields and better indexing
    */
   async getMessages(
     roomId: number,
@@ -495,7 +576,7 @@ export class ChatService {
     cursor?: number,
     limit: number = 50,
   ) {
-    // Validate user is participant
+    // Validate user is participant (cached check)
     await this.validateChatRoomAccess(roomId, userId);
 
     // Build query
@@ -508,12 +589,22 @@ export class ChatService {
       where.id = { lt: cursor };
     }
 
-    // Fetch messages
+    // Fetch messages with minimal fields
     const messages = await this.prisma.chatMessage.findMany({
       where,
       take: limit + 1, // Fetch one extra to check if there are more
       orderBy: { createdAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        content: true,
+        messageType: true,
+        fileUrl: true,
+        fileName: true,
+        fileSize: true,
+        mimeType: true,
+        status: true,
+        createdAt: true,
+        senderId: true,
         sender: {
           select: {
             id: true,
@@ -603,6 +694,7 @@ export class ChatService {
 
   /**
    * Get admin support chats with user details
+   * OPTIMIZED: Reduced includes and improved sorting
    */
   async getAdminSupportChats(
     adminId: number,
@@ -621,6 +713,9 @@ export class ChatService {
         where,
         include: {
           participants: {
+            where: {
+              userId: { not: adminId }, // Only fetch non-admin participants
+            },
             include: {
               user: {
                 select: {
@@ -643,7 +738,12 @@ export class ChatService {
           messages: {
             take: 1,
             orderBy: { createdAt: 'desc' },
-            include: {
+            select: {
+              id: true,
+              content: true,
+              messageType: true,
+              createdAt: true,
+              senderId: true,
               sender: {
                 select: {
                   id: true,
@@ -656,28 +756,36 @@ export class ChatService {
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: [
-          { participants: { _count: 'desc' } }, // This won't work directly, we'll sort in memory
-          { lastMessageAt: 'desc' },
-        ],
+        orderBy: { lastMessageAt: 'desc' },
       }),
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    // Format response with unread count
+    // Get admin participant data separately for unread counts
+    const adminParticipants = await this.prisma.chatParticipant.findMany({
+      where: {
+        chatRoomId: { in: chatRooms.map((r) => r.id) },
+        userId: adminId,
+      },
+      select: {
+        chatRoomId: true,
+        unreadCount: true,
+      },
+    });
+
+    const unreadMap = new Map(
+      adminParticipants.map((p) => [p.chatRoomId, p.unreadCount]),
+    );
+
+    // Format response with pre-fetched data
     const formattedRooms = chatRooms.map((room) => {
-      const adminParticipant = room.participants.find(
-        (p) => p.userId === adminId,
-      );
-      const userParticipant = room.participants.find(
-        (p) => p.userId !== adminId,
-      );
+      const userParticipant = room.participants[0]; // We filtered to only get non-admin participants
 
       return {
         id: room.id,
         type: room.type,
         lastMessageAt: room.lastMessageAt,
-        unreadCount: adminParticipant?.unreadCount || 0,
+        unreadCount: unreadMap.get(room.id) || 0,
         user: userParticipant?.user || null,
         lastMessage: room.messages[0] || null,
         createdAt: room.createdAt,
@@ -705,6 +813,7 @@ export class ChatService {
 
   /**
    * Get manager support chats with referral statistics
+   * OPTIMIZED: Batch query for order stats to avoid N+1 problem
    */
   async getManagerSupportChats(
     managerId: number,
@@ -719,19 +828,22 @@ export class ChatService {
 
     const referralIds = referrals.map((r) => r.id);
 
-    if (referralIds.length === 0) {
-      return {
-        data: [],
-        total: 0,
-        page,
-        limit,
-        totalPages: 0,
-      };
-    }
-
+    // Build where clause to include both MANAGER_SUPPORT and ADMIN_SUPPORT rooms
     const where = {
-      type: 'MANAGER_SUPPORT' as any,
-      referralId: { in: referralIds },
+      OR: [
+        {
+          // Manager's chats with referrals
+          type: ChatRoomType.MANAGER_SUPPORT,
+          referralId: { in: referralIds },
+        },
+        {
+          // Manager's chat with admin
+          type: ChatRoomType.ADMIN_SUPPORT,
+          participants: {
+            some: { userId: managerId },
+          },
+        },
+      ],
     };
 
     const [chatRooms, total] = await Promise.all([
@@ -739,6 +851,9 @@ export class ChatService {
         where,
         include: {
           participants: {
+            where: {
+              userId: { not: managerId }, // Only fetch other participants
+            },
             include: {
               user: {
                 select: {
@@ -759,6 +874,13 @@ export class ChatService {
           messages: {
             take: 1,
             orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              content: true,
+              messageType: true,
+              createdAt: true,
+              senderId: true,
+            },
           },
         },
         skip: (page - 1) * limit,
@@ -768,41 +890,67 @@ export class ChatService {
       this.prisma.chatRoom.count({ where }),
     ]);
 
-    // Get referral statistics for each user
-    const formattedRooms = await Promise.all(
-      chatRooms.map(async (room) => {
-        const managerParticipant = room.participants.find(
-          (p) => p.userId === managerId,
-        );
-        const userParticipant = room.participants.find(
-          (p) => p.userId !== managerId,
-        );
+    // Get manager participant data separately (more efficient)
+    const managerParticipants = await this.prisma.chatParticipant.findMany({
+      where: {
+        chatRoomId: { in: chatRooms.map((r) => r.id) },
+        userId: managerId,
+      },
+      select: {
+        chatRoomId: true,
+        unreadCount: true,
+      },
+    });
 
-        // Get order statistics for the referred user
-        const orderStats = await this.prisma.orderRequest.aggregate({
-          where: {
-            userId: userParticipant?.userId,
-            status: 'DELIVERED',
-          },
-          _count: { id: true },
-          _sum: { decidedPrice: true },
-        });
-
-        return {
-          id: room.id,
-          type: room.type,
-          lastMessageAt: room.lastMessageAt,
-          unreadCount: managerParticipant?.unreadCount || 0,
-          user: userParticipant?.user || null,
-          lastMessage: room.messages[0] || null,
-          referralStats: {
-            totalOrders: orderStats._count.id,
-            totalRevenue: orderStats._sum.decidedPrice?.toNumber() || 0,
-          },
-          createdAt: room.createdAt,
-        };
-      }),
+    const unreadMap = new Map(
+      managerParticipants.map((p) => [p.chatRoomId, p.unreadCount]),
     );
+
+    // OPTIMIZATION: Batch fetch all order stats in one query
+    const userIds = chatRooms
+      .flatMap((room) => room.participants.map((p) => p.userId))
+      .filter((id) => id !== managerId);
+
+    const orderStatsMap = new Map();
+    if (userIds.length > 0) {
+      const orderStats = await this.prisma.orderRequest.groupBy({
+        by: ['userId'],
+        where: {
+          userId: { in: userIds },
+          status: OrderStatus.DELIVERED,
+        },
+        _count: { id: true },
+        _sum: { decidedPrice: true },
+      });
+
+      orderStats.forEach((stat) => {
+        orderStatsMap.set(stat.userId, {
+          totalOrders: stat._count.id,
+          totalRevenue: stat._sum.decidedPrice
+            ? Number(stat._sum.decidedPrice)
+            : 0,
+        });
+      });
+    }
+
+    // Format response with pre-fetched data
+    const formattedRooms = chatRooms.map((room) => {
+      const userParticipant = room.participants[0]; // We filtered to only get non-manager participants
+
+      return {
+        id: room.id,
+        type: room.type,
+        lastMessageAt: room.lastMessageAt,
+        unreadCount: unreadMap.get(room.id) || 0,
+        user: userParticipant?.user || null,
+        lastMessage: room.messages[0] || null,
+        referralStats: orderStatsMap.get(userParticipant?.userId) || {
+          totalOrders: 0,
+          totalRevenue: 0,
+        },
+        createdAt: room.createdAt,
+      };
+    });
 
     return {
       data: formattedRooms,
@@ -910,5 +1058,692 @@ export class ChatService {
     });
 
     return messages;
+  }
+
+  /**
+   * Get all users for admin chat directory (Column 1)
+   */
+  async getAllUsersForAdmin(
+    page: number = 1,
+    limit: number = 50,
+    search?: string,
+    role?: string,
+  ) {
+    const where: any = {};
+
+    // Filter by search query
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        {
+          profile: {
+            fullName: { contains: search, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
+
+    // Filter by role
+    if (role && role !== 'ALL') {
+      where.role = role;
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          role: true,
+          isVerified: true,
+          createdAt: true,
+          lastLogin: true,
+          profile: {
+            select: {
+              fullName: true,
+              whatsappNumber: true,
+              verified: true,
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ lastLogin: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Admin initiates chat with any user
+   */
+  async adminInitiateChat(adminId: number, userId: number) {
+    // Check if chat room already exists
+    const existingRoom = await this.prisma.chatRoom.findFirst({
+      where: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        AND: [
+          {
+            participants: {
+              some: { userId: adminId },
+            },
+          },
+          {
+            participants: {
+              some: { userId },
+            },
+          },
+        ],
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (existingRoom) {
+      // Format response to include user field
+      const userParticipant = existingRoom.participants.find(
+        (p) => p.userId !== adminId,
+      );
+
+      return {
+        ...existingRoom,
+        user: userParticipant?.user || null,
+        lastMessage: existingRoom.messages[0] || null,
+      };
+    }
+
+    // Create new admin support chat room
+    const newRoom = await this.prisma.chatRoom.create({
+      data: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        participants: {
+          create: [{ userId: adminId }, { userId }],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Format response to include user field
+    const userParticipant = newRoom.participants.find(
+      (p) => p.userId !== adminId,
+    );
+
+    return {
+      ...newRoom,
+      user: userParticipant?.user || null,
+      lastMessage: newRoom.messages[0] || null,
+    };
+  }
+
+  /**
+   * Get all referred users for manager chat directory (Column 1 for Manager)
+   */
+  async getReferredUsersForManager(
+    managerId: number,
+    page: number = 1,
+    limit: number = 50,
+    search?: string,
+  ) {
+    // Get manager's referrals
+    const referrals = await this.prisma.referral.findMany({
+      where: { referrerId: managerId },
+      select: { refereeId: true },
+    });
+
+    const referredUserIds = referrals.map((r) => r.refereeId);
+
+    if (referredUserIds.length === 0) {
+      return {
+        data: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+      };
+    }
+
+    const where: any = {
+      id: { in: referredUserIds },
+    };
+
+    // Filter by search query
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        {
+          profile: {
+            fullName: { contains: search, mode: 'insensitive' },
+          },
+        },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          role: true,
+          isVerified: true,
+          createdAt: true,
+          lastLogin: true,
+          profile: {
+            select: {
+              fullName: true,
+              whatsappNumber: true,
+              verified: true,
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ lastLogin: 'desc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      data: users,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Manager initiates chat with a referred user
+   */
+  async managerInitiateChat(managerId: number, userId: number) {
+    // Verify referral relationship exists
+    const referral = await this.prisma.referral.findFirst({
+      where: {
+        referrerId: managerId,
+        refereeId: userId,
+      },
+    });
+
+    if (!referral) {
+      throw new ForbiddenException(
+        'You can only chat with users you have referred',
+      );
+    }
+
+    // Check if chat room already exists
+    const existingRoom = await this.prisma.chatRoom.findFirst({
+      where: {
+        type: ChatRoomType.MANAGER_SUPPORT,
+        referralId: referral.id,
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (existingRoom) {
+      return existingRoom;
+    }
+
+    // Create new manager support chat room
+    const newRoom = await this.prisma.chatRoom.create({
+      data: {
+        type: ChatRoomType.MANAGER_SUPPORT,
+        referralId: referral.id,
+        participants: {
+          create: [{ userId: managerId }, { userId }],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return newRoom;
+  }
+
+  /**
+   * Get or create manager's chat with admin (for Tab 1)
+   */
+  async getOrCreateManagerAdminChat(managerId: number) {
+    // Check if manager already has a chat with any admin
+    const existingRoom = await this.prisma.chatRoom.findFirst({
+      where: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        participants: {
+          some: { userId: managerId },
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          where: { isDeleted: false },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (existingRoom) {
+      return {
+        ...existingRoom,
+        messages: existingRoom.messages.reverse(), // Chronological order
+      };
+    }
+
+    // Find any admin user
+    const admin = await this.prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+    });
+
+    if (!admin) {
+      throw new NotFoundException('No admin available');
+    }
+
+    // Create new admin support chat room
+    const newRoom = await this.prisma.chatRoom.create({
+      data: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        participants: {
+          create: [{ userId: managerId }, { userId: admin.id }],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: true,
+      },
+    });
+
+    return newRoom;
+  }
+
+  /**
+   * Get or create user's chat with admin (for normal users)
+   */
+  async getOrCreateUserAdminChat(userId: number) {
+    // Check if user already has a chat with any admin
+    const existingRoom = await this.prisma.chatRoom.findFirst({
+      where: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        participants: {
+          some: { userId },
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          where: { isDeleted: false },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (existingRoom) {
+      return {
+        ...existingRoom,
+        messages: existingRoom.messages.reverse(), // Chronological order
+      };
+    }
+
+    // Find any admin user
+    const admin = await this.prisma.user.findFirst({
+      where: { role: 'ADMIN' },
+    });
+
+    if (!admin) {
+      throw new NotFoundException('No admin available');
+    }
+
+    // Create new admin support chat room
+    const newRoom = await this.prisma.chatRoom.create({
+      data: {
+        type: ChatRoomType.ADMIN_SUPPORT,
+        participants: {
+          create: [{ userId }, { userId: admin.id }],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: true,
+      },
+    });
+
+    return newRoom;
+  }
+
+  /**
+   * Check if user has a referral manager
+   */
+  async checkUserHasReferralManager(userId: number) {
+    const referral = await this.prisma.referral.findFirst({
+      where: {
+        refereeId: userId,
+        referrer: {
+          role: 'REFERRAL_MANAGER',
+        },
+      },
+      include: {
+        referrer: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!referral) {
+      return {
+        hasManager: false,
+        manager: null,
+      };
+    }
+
+    return {
+      hasManager: true,
+      manager: referral.referrer,
+    };
+  }
+
+  /**
+   * Get or create user's chat with their referral manager
+   */
+  async getOrCreateUserManagerChat(userId: number) {
+    // Find referral relationship
+    const referral = await this.prisma.referral.findFirst({
+      where: {
+        refereeId: userId,
+        referrer: {
+          role: 'REFERRAL_MANAGER',
+        },
+      },
+      include: {
+        referrer: true,
+      },
+    });
+
+    if (!referral) {
+      throw new NotFoundException(
+        'You do not have a referral manager assigned',
+      );
+    }
+
+    // Check if chat room already exists
+    const existingRoom = await this.prisma.chatRoom.findFirst({
+      where: {
+        type: ChatRoomType.MANAGER_SUPPORT,
+        referralId: referral.id,
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: {
+          take: 50,
+          orderBy: { createdAt: 'desc' },
+          where: { isDeleted: false },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (existingRoom) {
+      return {
+        ...existingRoom,
+        messages: existingRoom.messages.reverse(), // Chronological order
+      };
+    }
+
+    // Create new manager support chat room
+    const newRoom = await this.prisma.chatRoom.create({
+      data: {
+        type: ChatRoomType.MANAGER_SUPPORT,
+        referralId: referral.id,
+        participants: {
+          create: [{ userId }, { userId: referral.referrerId }],
+        },
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                role: true,
+              },
+            },
+          },
+        },
+        messages: true,
+      },
+    });
+
+    return newRoom;
   }
 }

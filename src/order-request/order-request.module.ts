@@ -3,9 +3,10 @@ import { OrderRequestController } from './order-request.controller';
 import { OrderRequestService } from './order-request.service';
 import { DatabaseModule } from '../database/database.module';
 import { UploadModule } from '../upload/upload.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [DatabaseModule, UploadModule],
+  imports: [DatabaseModule, UploadModule, NotificationsModule],
   controllers: [OrderRequestController],
   providers: [OrderRequestService],
   exports: [OrderRequestService],

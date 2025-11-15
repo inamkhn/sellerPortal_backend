@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
-import { AnalyticsController } from './analytics.controller';
+import {
+  AnalyticsController,
+  UserAnalyticsController,
+} from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import { DatabaseModule } from '../database/database.module';
 
@@ -12,7 +15,7 @@ import { DatabaseModule } from '../database/database.module';
       max: 100, // Max items in cache
     }),
   ],
-  controllers: [AnalyticsController],
+  controllers: [AnalyticsController, UserAnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],
 })

@@ -101,10 +101,6 @@ model Product {
   productTags           String[]              @default([]) @map("product_tags")
   quantity              Int                   @default(1)
   sku                   String?               @unique
-  facebookPostingStatus FacebookPostingStatus @default(NOT_POSTED) @map("facebook_posting_status")
-  facebookListingUrl    String?               @map("facebook_listing_url")
-  facebookLastPosted    DateTime?             @map("facebook_last_posted")
-  facebookRetryCount    Int                   @default(0) @map("facebook_retry_count")
   createdAt             DateTime              @default(now()) @map("created_at")
   category              Category              @relation(fields: [categoryId], references: [id])
   orderRequests         OrderRequest[]
@@ -114,7 +110,6 @@ model Product {
   @@index([categoryId])
   @@index([title])
   @@index([price])
-  @@index([facebookPostingStatus])
   @@map("products")
 }
 
@@ -384,16 +379,6 @@ enum OrderStatus {
   PARTIALLY_DELIVERED
 
   @@map("order_status")
-}
-
-enum FacebookPostingStatus {
-  NOT_POSTED
-  POSTING
-  POSTED
-  FAILED
-  NEEDS_UPDATE
-
-  @@map("facebook_posting_status")
 }
 
 enum SettlementStatus {

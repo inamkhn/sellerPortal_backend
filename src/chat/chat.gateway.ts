@@ -26,12 +26,11 @@ interface AuthenticatedSocket extends Socket {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: '*', // Allow all origins for testing
     credentials: true,
   },
   namespace: '/chat',
 })
-@UseGuards(WsJwtGuard)
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -39,13 +38,34 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Map to track user connections: userId -> Set of socket IDs
   private userSockets: Map<number, Set<string>> = new Map();
 
-  constructor(private readonly chatService: ChatService) { }
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly wsJwtGuard: WsJwtGuard,
+  ) {}
 
-  handleConnection(client: AuthenticatedSocket) {
+  async handleConnection(client: AuthenticatedSocket) {
+    console.log('🔌 New WebSocket connection attempt');
     try {
+      // Manually authenticate the connection
+      const context = {
+        switchToWs: () => ({
+          getClient: () => client,
+        }),
+      } as any;
+
+      const isAuthenticated = await this.wsJwtGuard.canActivate(context);
+
+      if (!isAuthenticated) {
+        console.error('❌ Authentication failed, disconnecting');
+        client.disconnect();
+        return;
+      }
+
       const user = client.data.user;
+      console.log('User data from socket:', user);
 
       if (!user || !user.id) {
+        console.error('❌ No user data or user ID found, disconnecting');
         client.disconnect();
         return;
       }
@@ -56,7 +76,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
       this.userSockets.get(user.id)?.add(client.id);
 
-      console.log(`User ${user.id} connected with socket ${client.id}`);
+      console.log(`✅ User ${user.id} connected with socket ${client.id}`);
 
       // Emit connection success
       client.emit('connected', {
@@ -64,7 +84,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userId: user.id,
       });
     } catch (error) {
-      console.error('Connection error:', error);
+      console.error('❌ Connection error:', error);
       client.disconnect();
     }
   }
@@ -90,6 +110,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('join_room')
   async handleJoinRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -104,7 +125,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Join the room
       const roomName = `room:${roomId}`;
-      client.join(roomName);
+      await client.join(roomName);
 
       console.log(`User ${user.id} joined room ${roomId}`);
 
@@ -120,6 +141,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('send_message')
   async handleSendMessage(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -169,6 +191,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('leave_room')
   handleLeaveRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -194,6 +217,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('typing_start')
   async handleTypingStart(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -220,6 +244,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('typing_stop')
   async handleTypingStop(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -246,6 +271,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('message_read')
   async handleMessageRead(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -291,22 +317,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Method to get all online users in a room
   getOnlineUsersInRoom(roomId: number): number[] {
-    const roomName = `room:${roomId}`;
-    const room = this.server.sockets.adapter.rooms.get(roomName);
+    try {
+      if (
+        !this.server ||
+        !this.server.sockets ||
+        !this.server.sockets.adapter
+      ) {
+        console.warn('Server or adapter not initialized yet');
+        return [];
+      }
 
-    if (!room) {
+      const roomName = `room:${roomId}`;
+      const room = this.server.sockets.adapter.rooms.get(roomName);
+
+      if (!room) {
+        return [];
+      }
+
+      const onlineUserIds = new Set<number>();
+
+      room.forEach((socketId) => {
+        const socket = this.server.sockets.sockets.get(socketId);
+        if (socket && socket.data.user) {
+          onlineUserIds.add(socket.data.user.id);
+        }
+      });
+
+      return Array.from(onlineUserIds);
+    } catch (error) {
+      console.error('Error getting online users in room:', error);
       return [];
     }
-
-    const onlineUserIds = new Set<number>();
-
-    room.forEach((socketId) => {
-      const socket = this.server.sockets.sockets.get(socketId);
-      if (socket && socket.data.user) {
-        onlineUserIds.add(socket.data.user.id);
-      }
-    });
-
-    return Array.from(onlineUserIds);
   }
 }

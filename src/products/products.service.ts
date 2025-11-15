@@ -40,6 +40,17 @@ export class ProductsService {
     createProductDto: CreateProductDto,
     photos: string[] = [],
   ) {
+    // Validate category exists
+    const category = await this.prisma.category.findUnique({
+      where: { id: createProductDto.categoryId },
+    });
+
+    if (!category) {
+      throw new NotFoundException(
+        `Category with ID ${createProductDto.categoryId} not found`,
+      );
+    }
+
     // Check if SKU already exists
     if (createProductDto.sku) {
       const existingSku = await this.prisma.product.findUnique({

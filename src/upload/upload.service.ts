@@ -141,4 +141,69 @@ export class UploadService {
       throw new BadRequestException(`Failed to delete images: ${errorMessage}`);
     }
   }
+
+  async uploadBase64Image(
+    base64String: string,
+    folder: string = 'products',
+  ): Promise<CloudinaryResponse> {
+    // Validate base64 format
+    if (!base64String || typeof base64String !== 'string') {
+      throw new BadRequestException('Invalid base64 string');
+    }
+
+    if (!base64String.startsWith('data:image/')) {
+      throw new BadRequestException(
+        'Invalid image format. Must be a base64 encoded image.',
+      );
+    }
+
+    try {
+      const result = await cloudinary.uploader.upload(base64String, {
+        folder,
+        resource_type: 'image',
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto' },
+          { fetch_format: 'auto' },
+        ],
+      });
+
+      return result as CloudinaryResponse;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(
+        `Failed to upload base64 image: ${errorMessage}`,
+      );
+    }
+  }
+
+  async uploadBase64Images(
+    base64Images: string[],
+    folder: string = 'products',
+  ): Promise<CloudinaryResponse[]> {
+    // Validate image count
+    if (base64Images.length > 10) {
+      throw new BadRequestException('Maximum 10 images allowed per product.');
+    }
+
+    // Validate each image
+    base64Images.forEach((img, index) => {
+      if (!img || typeof img !== 'string') {
+        throw new BadRequestException(`Invalid image at index ${index}`);
+      }
+      if (!img.startsWith('data:image/')) {
+        throw new BadRequestException(
+          `Invalid image format at index ${index}. Must be a base64 encoded image.`,
+        );
+      }
+    });
+
+    // Upload all images
+    const uploadPromises = base64Images.map((base64) =>
+      this.uploadBase64Image(base64, folder),
+    );
+
+    return Promise.all(uploadPromises);
+  }
 }

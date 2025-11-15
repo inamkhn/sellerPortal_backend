@@ -24,6 +24,8 @@ export interface TokenPayload {
   email: string;
   role: Role;
   isVerified: boolean;
+  firstName?: string | null;
+  lastName?: string | null;
   iat?: number;
   exp?: number;
 }

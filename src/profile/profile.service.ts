@@ -26,7 +26,6 @@ export interface MinimalProduct {
   category: string;
   condition: string;
   sku: string | null;
-  facebookPostingStatus: string;
   createdAt: Date;
 }
 
@@ -446,7 +445,6 @@ export class ProfileService {
         },
         condition: true,
         sku: true,
-        facebookPostingStatus: true,
         createdAt: true,
       },
     });
@@ -480,7 +478,6 @@ export class ProfileService {
       category: product.category?.name || 'Uncategorized',
       condition: product.condition,
       sku: product.sku,
-      facebookPostingStatus: product.facebookPostingStatus,
       createdAt: product.createdAt,
     }));
   }

@@ -10,12 +10,16 @@ import { CreateOrderRequestDto, OrderType } from './dto';
 import { UpdateOrderRequestDto } from './dto/update-order-request.dto';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { OrderRequestQueryDto } from './dto/order-request-query.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class OrderRequestService {
   private readonly logger = new Logger(OrderRequestService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) { }
 
   async create(
     userId: number,
@@ -33,93 +37,232 @@ export class OrderRequestService {
 
     // Validate custom product
     if (createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT) {
+      // Check for new array format
       if (
-        !createOrderRequestDto.customProductName ||
-        !createOrderRequestDto.customProductDescription
+        createOrderRequestDto.customProducts &&
+        Array.isArray(createOrderRequestDto.customProducts) &&
+        createOrderRequestDto.customProducts.length > 0
       ) {
+        // Validate each custom product
+        for (const customProduct of createOrderRequestDto.customProducts) {
+          if (
+            !customProduct ||
+            typeof customProduct !== 'object' ||
+            !customProduct.name ||
+            !customProduct.description
+          ) {
+            throw new BadRequestException(
+              'Each custom product must have a name and description',
+            );
+          }
+        }
+      }
+      // Fallback to old format for backward compatibility
+      else if (
+        createOrderRequestDto.customProductName &&
+        createOrderRequestDto.customProductDescription
+      ) {
+        // Convert old format to new format
+        createOrderRequestDto.customProducts = [
+          {
+            name: createOrderRequestDto.customProductName,
+            description: createOrderRequestDto.customProductDescription,
+            categoryId: createOrderRequestDto.categoryId,
+            imageIndices:
+              imageUrls.length > 0
+                ? Array.from({ length: imageUrls.length }, (_, i) => i)
+                : undefined,
+          },
+        ];
+      } else {
         throw new BadRequestException(
-          'Custom product name and description are required',
+          'Custom products array is required for custom product orders',
         );
       }
     }
 
-    // Create order in transaction
-    return await this.prisma.$transaction(async (tx) => {
-      // Create OrderRequest
-      const orderRequest = await tx.orderRequest.create({
-        data: {
-          userId: userId,
-          productId:
-            createOrderRequestDto.orderType === OrderType.EXISTING_PRODUCT
-              ? createOrderRequestDto.productId
+    // Create order in transaction with extended timeout for image uploads
+    return await this.prisma.$transaction(
+      async (tx) => {
+        // Create OrderRequest
+        const orderRequest = await tx.orderRequest.create({
+          data: {
+            userId: userId,
+            productId:
+              createOrderRequestDto.orderType === OrderType.EXISTING_PRODUCT
+                ? createOrderRequestDto.productId
+                : null,
+            isCustomProduct:
+              createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT,
+            platform: createOrderRequestDto.platform,
+            decidedPrice: createOrderRequestDto.decidedPrice,
+            advancePayment: createOrderRequestDto.advancePayment,
+            advancePay: createOrderRequestDto.advancePay || null,
+            customerName: createOrderRequestDto.customerName,
+            customerPhone: createOrderRequestDto.customerPhone,
+            customerWhatsapp: createOrderRequestDto.customerWhatsapp,
+            customerEmail: createOrderRequestDto.customerEmail,
+            customerNotes: createOrderRequestDto.customerNotes || null,
+            deliveryAddress: createOrderRequestDto.deliveryAddress || null,
+            deliveryDate: createOrderRequestDto.deliveryDate
+              ? new Date(createOrderRequestDto.deliveryDate)
               : null,
-          isCustomProduct:
-            createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT,
-          platform: createOrderRequestDto.platform,
-          decidedPrice: createOrderRequestDto.decidedPrice,
-          advancePayment: createOrderRequestDto.advancePayment,
-          advancePay: createOrderRequestDto.advancePay || null,
-          customerName: createOrderRequestDto.customerName,
-          customerPhone: createOrderRequestDto.customerPhone,
-          customerWhatsapp: createOrderRequestDto.customerWhatsapp,
-          customerEmail: createOrderRequestDto.customerEmail,
-          customerNotes: createOrderRequestDto.customerNotes || null,
-          deliveryAddress: createOrderRequestDto.deliveryAddress || null,
-          deliveryDate: createOrderRequestDto.deliveryDate
-            ? new Date(createOrderRequestDto.deliveryDate)
-            : null,
-          status: 'PENDING',
-        },
-      });
+            status: 'PENDING',
+          },
+        });
 
-      // Create CustomProduct if needed
-      if (createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT) {
-        let categoryId = createOrderRequestDto.categoryId;
-
-        // Get or create default category
-        if (!categoryId) {
-          let category = await tx.category.findFirst({
+        // Create CustomProducts if needed
+        if (
+          createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT &&
+          createOrderRequestDto.customProducts &&
+          Array.isArray(createOrderRequestDto.customProducts) &&
+          createOrderRequestDto.customProducts.length > 0
+        ) {
+          // Get or create default category once
+          let defaultCategory = await tx.category.findFirst({
             where: { name: 'OTHER' },
           });
 
-          if (!category) {
-            category = await tx.category.create({
+          if (!defaultCategory) {
+            defaultCategory = await tx.category.create({
               data: { name: 'OTHER' },
             });
           }
 
-          categoryId = category.id;
+          // Type-safe iteration over custom products
+          const customProducts = createOrderRequestDto.customProducts;
+          for (const customProduct of customProducts) {
+            // Type guard to ensure we have a valid custom product
+            if (!customProduct || typeof customProduct !== 'object') {
+              continue;
+            }
+
+            const categoryId = customProduct.categoryId || defaultCategory.id;
+
+            // Map images based on imageIndices
+            let productImages: string[] = [];
+            if (
+              customProduct.imageIndices &&
+              Array.isArray(customProduct.imageIndices) &&
+              customProduct.imageIndices.length > 0
+            ) {
+              productImages = customProduct.imageIndices
+                .filter(
+                  (index: number) =>
+                    typeof index === 'number' &&
+                    index >= 0 &&
+                    index < imageUrls.length,
+                )
+                .map((index: number) => imageUrls[index]);
+            }
+
+            await tx.customProduct.create({
+              data: {
+                orderRequestId: orderRequest.id,
+                name: customProduct.name,
+                description: customProduct.description || null,
+                categoryId: categoryId,
+                images: productImages,
+              },
+            });
+          }
         }
 
-        await tx.customProduct.create({
-          data: {
-            orderRequestId: orderRequest.id,
-            name: createOrderRequestDto.customProductName!,
-            description: createOrderRequestDto.customProductDescription || null,
-            categoryId: categoryId,
-            images: imageUrls,
+        // Fetch the complete order with all relations (consistent for both types)
+        const completeOrder = await tx.orderRequest.findUnique({
+          where: { id: orderRequest.id },
+          include: {
+            product: true,
+            customProducts: {
+              include: {
+                category: true,
+              },
+            },
+            user: {
+              include: {
+                profile: true,
+              },
+            },
           },
         });
-      }
 
-      // Fetch the complete order with all relations (consistent for both types)
-      return await tx.orderRequest.findUnique({
-        where: { id: orderRequest.id },
-        include: {
-          product: true,
-          customProducts: {
-            include: {
-              category: true,
-            },
-          },
-          user: {
-            include: {
-              profile: true,
-            },
-          },
-        },
-      });
-    });
+        // Send notifications after transaction completes (non-blocking)
+        setImmediate(() => {
+          void (async () => {
+            try {
+              const orderType =
+                createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT
+                  ? 'Custom Product'
+                  : 'Existing Product';
+
+              // Generate product name for notifications
+              let productName = 'Product';
+              if (createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT) {
+                if (
+                  completeOrder?.customProducts &&
+                  completeOrder.customProducts.length > 0
+                ) {
+                  if (completeOrder.customProducts.length === 1) {
+                    productName = completeOrder.customProducts[0].name;
+                  } else {
+                    productName = `${completeOrder.customProducts.length} Custom Products`;
+                  }
+                }
+              } else {
+                productName = completeOrder?.product?.title || 'Product';
+              }
+
+              // 1. Notify the user who created the order
+              await this.notificationsService.createNotification({
+                userId: userId,
+                type: 'ORDER_UPDATE',
+                title: 'Order Request Created',
+                message: `Your order request #${orderRequest.id} for "${productName}" has been created successfully and is pending admin approval.`,
+                actionUrl: `/admin-orders/${orderRequest.id}`,
+                referenceId: orderRequest.id,
+                metadata: {
+                  orderType,
+                  status: 'PENDING',
+                },
+              });
+
+              // 2. Notify all admins about the new order
+              await this.notificationsService.createNotificationByRole(
+                'ADMIN',
+                'ORDER_UPDATE',
+                'New Order Request',
+                `New ${orderType.toLowerCase()} order request #${orderRequest.id} from ${completeOrder?.user?.firstName} ${completeOrder?.user?.lastName} for "${productName}". Amount: AED ${createOrderRequestDto.decidedPrice}`,
+                {
+                  actionUrl: `/admin/orders/${orderRequest.id}`,
+                  referenceId: orderRequest.id,
+                  metadata: {
+                    orderType,
+                    userId: userId,
+                    customerName: createOrderRequestDto.customerName,
+                    decidedPrice: createOrderRequestDto.decidedPrice,
+                  },
+                },
+              );
+
+              this.logger.log(
+                `Notifications sent for order request ${orderRequest.id}`,
+              );
+            } catch (error) {
+              this.logger.error(
+                `Failed to send notifications for order ${orderRequest.id}`,
+                error,
+              );
+            }
+          })();
+        });
+
+        return completeOrder;
+      },
+      {
+        maxWait: 30000, // 30 seconds
+        timeout: 60000, // 60 seconds
+      },
+    );
   }
 
   async findAll(userId: number, userRole: string, query: OrderRequestQueryDto) {
@@ -519,6 +662,94 @@ export class OrderRequestService {
         );
       }
     }
+
+    // Send notifications after update (non-blocking)
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const productName =
+            updatedOrder.product?.title ||
+            updatedOrder.customProducts?.[0]?.name ||
+            'Order';
+
+          // 1. If admin changed the status, notify the user
+          if (
+            userRole === 'ADMIN' &&
+            updateData.status &&
+            existingOrder.status !== updateData.status
+          ) {
+            const statusMessages: Record<OrderStatus, string> = {
+              PENDING: 'is now pending review',
+              CONFIRMED: 'has been confirmed',
+              IN_PROGRESS: 'is now in progress',
+              PAYMENT_PENDING: 'is awaiting payment',
+              DELIVERED: 'has been delivered',
+              PARTIALLY_DELIVERED: 'has been partially delivered',
+              CANCELLED: 'has been cancelled',
+            };
+
+            await this.notificationsService.createNotification({
+              userId: updatedOrder.userId,
+              type: 'ORDER_UPDATE',
+              title: 'Order Status Updated',
+              message: `Your order #${orderRequestId} for "${productName}" ${statusMessages[updateData.status] || 'has been updated'}.`,
+              actionUrl: `/orders/${orderRequestId}`,
+              referenceId: orderRequestId,
+              metadata: {
+                oldStatus: existingOrder.status,
+                newStatus: updateData.status,
+                updatedBy: 'admin',
+              },
+            });
+
+            this.logger.log(
+              `Status change notification sent for order ${orderRequestId}`,
+            );
+          }
+
+          // 2. If user updated order details, notify admins
+          if (userRole !== 'ADMIN') {
+            const updatedFields: string[] = [];
+            if (updateData.customerName !== undefined)
+              updatedFields.push('customer name');
+            if (updateData.customerPhone !== undefined)
+              updatedFields.push('phone');
+            if (updateData.decidedPrice !== undefined)
+              updatedFields.push('price');
+            if (updateData.deliveryAddress !== undefined)
+              updatedFields.push('delivery address');
+            if (updateData.deliveryDate !== undefined)
+              updatedFields.push('delivery date');
+
+            if (updatedFields.length > 0) {
+              await this.notificationsService.createNotificationByRole(
+                'ADMIN',
+                'ORDER_UPDATE',
+                'Order Updated by User',
+                `Order #${orderRequestId} for "${productName}" was updated by ${updatedOrder.user?.firstName} ${updatedOrder.user?.lastName}. Updated: ${updatedFields.join(', ')}.`,
+                {
+                  actionUrl: `/admin/orders/${orderRequestId}`,
+                  referenceId: orderRequestId,
+                  metadata: {
+                    userId: updatedOrder.userId,
+                    updatedFields,
+                  },
+                },
+              );
+
+              this.logger.log(
+                `User update notification sent to admins for order ${orderRequestId}`,
+              );
+            }
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to send update notifications for order ${orderRequestId}`,
+            error,
+          );
+        }
+      })();
+    });
 
     return updatedOrder;
   }

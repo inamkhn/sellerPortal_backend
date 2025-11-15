@@ -1,7 +1,7 @@
 import { IsOptional, IsEnum, IsString, IsNumber, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { ChatRoomType } from './create-chat-room.dto';
+import { ChatRoomType } from '@prisma/client';
 
 export class ChatRoomFiltersDto {
   @ApiProperty({

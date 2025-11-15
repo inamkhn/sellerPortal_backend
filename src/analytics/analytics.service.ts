@@ -758,4 +758,704 @@ export class AnalyticsService {
       },
     };
   }
+
+  // ============== USER-SPECIFIC ANALYTICS ==============
+
+  // Get user overview based on role
+  async getUserOverview(userId: number, dateRange: DateRange): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (user.role === Role.REFERRAL_MANAGER) {
+      return this.getReferralManagerOverview(userId, dateRange);
+    } else {
+      return this.getSellerOverview(userId, dateRange);
+    }
+  }
+
+  // Get referral manager overview
+  private async getReferralManagerOverview(
+    userId: number,
+    dateRange: DateRange,
+  ): Promise<any> {
+    const { startDate, endDate, previousStartDate, previousEndDate } =
+      this.calculateDateRange(dateRange);
+
+    // Current period metrics
+    const [currentEarnings, activeReferrals, currentCommission] =
+      await Promise.all([
+        // Total earnings from settlements
+        this.prisma.settlement.aggregate({
+          where: {
+            userId,
+            settlementType: 'REFERRAL_PAYMENT',
+            status: { in: ['PAID', 'PENDING'] },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          _sum: { amount: true },
+        }),
+        // Active referrals count
+        this.prisma.profile.count({
+          where: {
+            referredBy: userId,
+            verified: true,
+          },
+        }),
+        // Total commission from order settlements
+        this.prisma.orderSettlement.aggregate({
+          where: {
+            referrerId: userId,
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          _sum: { referralCommission: true },
+        }),
+      ]);
+
+    // Previous period metrics
+    const [previousEarnings, previousCommission] = await Promise.all([
+      this.prisma.settlement.aggregate({
+        where: {
+          userId,
+          settlementType: 'REFERRAL_PAYMENT',
+          status: { in: ['PAID', 'PENDING'] },
+          createdAt: { gte: previousStartDate, lte: previousEndDate },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.orderSettlement.aggregate({
+        where: {
+          referrerId: userId,
+          createdAt: { gte: previousStartDate, lte: previousEndDate },
+        },
+        _sum: { referralCommission: true },
+      }),
+    ]);
+
+    const totalEarnings = Number(currentEarnings._sum.amount || 0);
+    const prevEarnings = Number(previousEarnings._sum.amount || 0);
+    const totalCommission = Number(
+      currentCommission._sum.referralCommission || 0,
+    );
+    const prevCommission = Number(
+      previousCommission._sum.referralCommission || 0,
+    );
+    const avgCommissionPerReferral =
+      activeReferrals > 0 ? totalCommission / activeReferrals : 0;
+
+    // Get charts data
+    const [earningsOverTime, referralStatus, topReferredSellers] =
+      await Promise.all([
+        this.getReferralManagerEarningsOverTime(
+          userId,
+          startDate,
+          endDate,
+          dateRange,
+        ),
+        this.getReferralStatusDistribution(userId),
+        this.getTopReferredSellers(userId, startDate, endDate, 5),
+      ]);
+
+    return {
+      metrics: {
+        totalEarnings,
+        earningsGrowth: this.calculateGrowth(totalEarnings, prevEarnings),
+        activeReferrals,
+        referralsGrowth: 0, // Can be calculated if we track historical data
+        totalCommission,
+        commissionGrowth: this.calculateGrowth(totalCommission, prevCommission),
+        avgCommissionPerReferral: Number(avgCommissionPerReferral.toFixed(2)),
+        avgGrowth: 0,
+      },
+      charts: {
+        earningsOverTime,
+        referralStatus,
+        topReferredSellers,
+      },
+    };
+  }
+
+  // Get seller overview
+  private async getSellerOverview(
+    userId: number,
+    dateRange: DateRange,
+  ): Promise<any> {
+    const { startDate, endDate, previousStartDate, previousEndDate } =
+      this.calculateDateRange(dateRange);
+
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    // Current period metrics
+    const [currentRevenue, currentOrders, completedOrders] = await Promise.all([
+      // Total revenue
+      this.prisma.orderRequest.aggregate({
+        where: {
+          userId,
+          status: { in: deliveredStatuses },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { decidedPrice: true },
+      }),
+      // Total orders
+      this.prisma.orderRequest.count({
+        where: {
+          userId,
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      }),
+      // Completed orders
+      this.prisma.orderRequest.count({
+        where: {
+          userId,
+          status: { in: deliveredStatuses },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+      }),
+    ]);
+
+    // Previous period metrics
+    const [previousRevenue, previousOrders, previousCompleted] =
+      await Promise.all([
+        this.prisma.orderRequest.aggregate({
+          where: {
+            userId,
+            status: { in: deliveredStatuses },
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+          _sum: { decidedPrice: true },
+        }),
+        this.prisma.orderRequest.count({
+          where: {
+            userId,
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+        }),
+        this.prisma.orderRequest.count({
+          where: {
+            userId,
+            status: { in: deliveredStatuses },
+            createdAt: { gte: previousStartDate, lte: previousEndDate },
+          },
+        }),
+      ]);
+
+    const totalRevenue = Number(currentRevenue._sum.decidedPrice || 0);
+    const prevRevenue = Number(previousRevenue._sum.decidedPrice || 0);
+    const totalOrders = currentOrders;
+    const prevOrders = previousOrders;
+    const avgOrderValue =
+      completedOrders > 0 ? totalRevenue / completedOrders : 0;
+    const prevAvgOrderValue =
+      previousCompleted > 0 ? prevRevenue / previousCompleted : 0;
+
+    // Get charts data
+    const [revenueOverTime, ordersByStatus, topProducts] = await Promise.all([
+      this.getSellerRevenueOverTime(userId, startDate, endDate, dateRange),
+      this.getSellerOrdersByStatus(userId, startDate, endDate),
+      this.getSellerTopProducts(userId, startDate, endDate, 5),
+    ]);
+
+    return {
+      metrics: {
+        totalRevenue,
+        revenueGrowth: this.calculateGrowth(totalRevenue, prevRevenue),
+        totalOrders,
+        ordersGrowth: this.calculateGrowth(totalOrders, prevOrders),
+        completedOrders,
+        completionGrowth: this.calculateGrowth(
+          completedOrders,
+          previousCompleted,
+        ),
+        avgOrderValue: Number(avgOrderValue.toFixed(2)),
+        avgGrowth: this.calculateGrowth(avgOrderValue, prevAvgOrderValue),
+      },
+      charts: {
+        revenueOverTime,
+        ordersByStatus,
+        topProducts,
+      },
+    };
+  }
+
+  // Referral manager earnings over time
+  private async getReferralManagerEarningsOverTime(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const earnings = await this.prisma.settlement.findMany({
+      where: {
+        userId,
+        settlementType: 'REFERRAL_PAYMENT',
+        status: { in: ['PAID', 'PENDING'] },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(
+      earnings.map((e) => ({
+        decidedPrice: e.amount,
+        createdAt: e.createdAt,
+      })),
+      dateRange,
+    );
+  }
+
+  // Referral status distribution
+  private async getReferralStatusDistribution(
+    userId: number,
+  ): Promise<ChartDataPoint[]> {
+    const [active, inactive] = await Promise.all([
+      this.prisma.profile.count({
+        where: { referredBy: userId, verified: true },
+      }),
+      this.prisma.profile.count({
+        where: { referredBy: userId, verified: false },
+      }),
+    ]);
+
+    return [
+      { label: 'Active', value: active, color: '#10b981' },
+      { label: 'Inactive', value: inactive, color: '#ef4444' },
+    ];
+  }
+
+  // Top referred sellers
+  private async getTopReferredSellers(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    limit: number,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    // Get referred users
+    const referredProfiles = await this.prisma.profile.findMany({
+      where: { referredBy: userId },
+      select: { userId: true },
+    });
+
+    const referredUserIds = referredProfiles.map((p) => p.userId);
+
+    if (referredUserIds.length === 0) {
+      return [];
+    }
+
+    // Get their order totals
+    const topSellers = await this.prisma.orderRequest.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: referredUserIds },
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _sum: { decidedPrice: true },
+      orderBy: { _sum: { decidedPrice: 'desc' } },
+      take: limit,
+    });
+
+    const userIds = topSellers.map((s) => s.userId);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        profile: { select: { fullName: true } },
+      },
+    });
+
+    return topSellers.map((seller) => {
+      const user = users.find((u) => u.id === seller.userId);
+      const name =
+        user?.profile?.fullName ||
+        `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+        'Unknown';
+
+      return {
+        label: name,
+        value: Number(seller._sum.decidedPrice || 0),
+      };
+    });
+  }
+
+  // Seller revenue over time
+  private async getSellerRevenueOverTime(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const orders = await this.prisma.orderRequest.findMany({
+      where: {
+        userId,
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        decidedPrice: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(orders, dateRange);
+  }
+
+  // Seller orders by status
+  private async getSellerOrdersByStatus(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<ChartDataPoint[]> {
+    const statusColors: Record<string, string> = {
+      DELIVERED: '#10b981',
+      IN_PROGRESS: '#3b82f6',
+      PENDING: '#f59e0b',
+      CANCELLED: '#ef4444',
+      CONFIRMED: '#8b5cf6',
+      PAYMENT_PENDING: '#ec4899',
+      PARTIALLY_DELIVERED: '#06b6d4',
+    };
+
+    const statusLabels: Record<string, string> = {
+      DELIVERED: 'Delivered',
+      IN_PROGRESS: 'In Progress',
+      PENDING: 'Pending',
+      CANCELLED: 'Cancelled',
+      CONFIRMED: 'Confirmed',
+      PAYMENT_PENDING: 'Payment Pending',
+      PARTIALLY_DELIVERED: 'Partially Delivered',
+    };
+
+    const ordersByStatus = await this.prisma.orderRequest.groupBy({
+      by: ['status'],
+      where: {
+        userId,
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      _count: { id: true },
+    });
+
+    return ordersByStatus.map((item) => ({
+      label: statusLabels[item.status] || item.status,
+      value: item._count.id,
+      color: statusColors[item.status] || '#6b7280',
+    }));
+  }
+
+  // Seller top products
+  private async getSellerTopProducts(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    limit: number,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const topProducts = await this.prisma.orderRequest.groupBy({
+      by: ['productId'],
+      where: {
+        userId,
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
+        productId: { not: null },
+      },
+      _sum: { decidedPrice: true },
+      orderBy: { _sum: { decidedPrice: 'desc' } },
+      take: limit,
+    });
+
+    const productIds = topProducts
+      .map((p) => p.productId)
+      .filter((id): id is number => id !== null);
+
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, title: true },
+    });
+
+    return topProducts
+      .filter((item) => item.productId !== null)
+      .map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        return {
+          label: product?.title || 'Unknown Product',
+          value: Number(item._sum.decidedPrice || 0),
+        };
+      });
+  }
+
+  // Get user performance details
+  async getUserPerformance(
+    userId: number,
+    dateRange: DateRange,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const { startDate, endDate } = this.calculateDateRange(dateRange);
+
+    if (user.role === Role.REFERRAL_MANAGER) {
+      return this.getReferralManagerPerformance(
+        userId,
+        startDate,
+        endDate,
+        page,
+        limit,
+      );
+    } else {
+      return this.getSellerPerformance(userId, startDate, endDate, page, limit);
+    }
+  }
+
+  // Referral manager performance details
+  private async getReferralManagerPerformance(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    page: number,
+    limit: number,
+  ): Promise<any> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const skip = (page - 1) * limit;
+
+    // Get referred users
+    const referredProfiles = await this.prisma.profile.findMany({
+      where: { referredBy: userId },
+      select: { userId: true },
+    });
+
+    const referredUserIds = referredProfiles.map((p) => p.userId);
+
+    if (referredUserIds.length === 0) {
+      return {
+        topReferredSellers: {
+          data: [],
+          pagination: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        },
+      };
+    }
+
+    // Get total count
+    const totalSellers = referredUserIds.length;
+
+    // Get sellers with their orders
+    const sellers = await this.prisma.user.findMany({
+      where: {
+        id: { in: referredUserIds },
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        profile: {
+          select: { fullName: true },
+        },
+        orderRequests: {
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          select: {
+            decidedPrice: true,
+            orderSettlements: {
+              where: { referrerId: userId },
+              select: {
+                referralCommission: true,
+              },
+            },
+          },
+        },
+      },
+      skip,
+      take: limit,
+    });
+
+    // Format data
+    const data = sellers.map((seller) => {
+      const orders = seller.orderRequests.length;
+      const revenue = seller.orderRequests.reduce(
+        (sum, order) => sum + Number(order.decidedPrice),
+        0,
+      );
+      const commission = seller.orderRequests.reduce(
+        (sum, order) =>
+          sum + Number(order.orderSettlements[0]?.referralCommission || 0),
+        0,
+      );
+
+      return {
+        id: seller.id,
+        name:
+          seller.profile?.fullName ||
+          `${seller.firstName || ''} ${seller.lastName || ''}`.trim() ||
+          'Unknown',
+        email: seller.email,
+        orders,
+        revenue: Number(revenue.toFixed(2)),
+        commission: Number(commission.toFixed(2)),
+      };
+    });
+
+    // Sort by revenue descending
+    data.sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      topReferredSellers: {
+        data,
+        pagination: {
+          total: totalSellers,
+          page,
+          limit,
+          totalPages: Math.ceil(totalSellers / limit),
+        },
+      },
+    };
+  }
+
+  // Seller performance details
+  private async getSellerPerformance(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    page: number,
+    limit: number,
+  ): Promise<any> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const skip = (page - 1) * limit;
+
+    // Get total count
+    const totalProducts = await this.prisma.product.count({
+      where: {
+        ownerId: userId,
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+    });
+
+    // Get products with their orders
+    const products = await this.prisma.product.findMany({
+      where: {
+        ownerId: userId,
+        orderRequests: {
+          some: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        category: {
+          select: { name: true },
+        },
+        orderRequests: {
+          where: {
+            status: { in: deliveredStatuses },
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          select: {
+            decidedPrice: true,
+          },
+        },
+      },
+      skip,
+      take: limit,
+    });
+
+    // Format data
+    const data = products.map((product) => {
+      const sold = product.orderRequests.length;
+      const revenue = product.orderRequests.reduce(
+        (sum, order) => sum + Number(order.decidedPrice),
+        0,
+      );
+      const avgPrice = sold > 0 ? revenue / sold : 0;
+
+      return {
+        id: product.id,
+        name: product.title,
+        category: product.category.name,
+        sold,
+        revenue: Number(revenue.toFixed(2)),
+        avgPrice: Number(avgPrice.toFixed(2)),
+      };
+    });
+
+    // Sort by sold quantity descending
+    data.sort((a, b) => b.sold - a.sold);
+
+    return {
+      topProducts: {
+        data,
+        pagination: {
+          total: totalProducts,
+          page,
+          limit,
+          totalPages: Math.ceil(totalProducts / limit),
+        },
+      },
+    };
+  }
 }

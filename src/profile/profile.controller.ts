@@ -514,7 +514,6 @@ export class ProfileController {
           category: 'SOFAS',
           condition: 'LIKE_NEW',
           sku: 'SOFA-001',
-          facebookPostingStatus: 'NOT_POSTED',
           createdAt: '2025-10-03T18:14:02.524Z',
         },
       ],

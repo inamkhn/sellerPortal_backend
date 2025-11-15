@@ -47,7 +47,7 @@ export class OrderRequestController {
 
   @Post()
   @UseInterceptors(
-    FilesInterceptor('customProductImages', 10, {
+    FilesInterceptor('customProductImages', 50, {
       limits: {
         fileSize: 5 * 1024 * 1024, // 5MB per file
       },
@@ -72,7 +72,11 @@ export class OrderRequestController {
       },
     }),
   )
-  @ApiOperation({ summary: 'Create a new order request' })
+  @ApiOperation({
+    summary: 'Create a new order request',
+    description:
+      'Create an order request for existing or custom products. For custom products with multiple items, upload all images and specify imageIndices in each customProduct object to map images to products.',
+  })
   @ApiConsumes('multipart/form-data', 'application/json')
   @ApiResponse({
     status: 201,
@@ -98,7 +102,7 @@ export class OrderRequestController {
       // Validate uploaded files
       this.uploadService.validateImageFiles(files);
 
-      // Upload images to Cloudinary
+      // Upload all images to Cloudinary
       const uploadResults = await this.uploadService.uploadMultipleImages(
         files,
         'order-requests',

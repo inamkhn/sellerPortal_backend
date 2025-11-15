@@ -24,6 +24,7 @@ import {
   isOTPExpired,
   isValidOTPFormat,
 } from '../common/utils/otp.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +33,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // Password hashing utilities
@@ -54,6 +56,8 @@ export class AuthService {
       email: user.email,
       role: user.role,
       isVerified: user.isVerified,
+      firstName: user.firstName,
+      lastName: user.lastName,
     };
 
     // Generate access token with longer expiry since no refresh token
@@ -153,6 +157,57 @@ export class AuthService {
       // Log error but don't fail registration
       console.error('Failed to send verification email:', error);
     }
+
+    // Send notifications (non-blocking)
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const userName = `${firstName} ${lastName}`.trim() || email;
+
+          // 1. Notify all admins about new user registration
+          await this.notificationsService.createNotificationByRole(
+            'ADMIN',
+            'SYSTEM',
+            'New User Registration',
+            `New user ${userName} (${email}) has registered${referrer ? ` using referral code from ${referrer.firstName} ${referrer.lastName}` : ''}.`,
+            {
+              actionUrl: `/admin/users/${user.id}`,
+              referenceId: user.id,
+              metadata: {
+                userId: user.id,
+                email: user.email,
+                wasReferred: !!referrer,
+                referrerId: referrer?.id,
+              },
+            },
+          );
+
+          // 2. If user was referred, notify the referrer
+          if (referrer) {
+            await this.notificationsService.createNotification({
+              userId: referrer.id,
+              type: 'SYSTEM',
+              title: 'New Referral Signup',
+              message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
+              actionUrl: `/referrals`,
+              referenceId: user.id,
+              metadata: {
+                newUserId: user.id,
+                newUserEmail: email,
+                newUserName: userName,
+              },
+            });
+          }
+
+          console.log(`Registration notifications sent for user ${user.id}`);
+        } catch (error) {
+          console.error(
+            `Failed to send registration notifications for user ${user.id}`,
+            error,
+          );
+        }
+      })();
+    });
 
     return {
       user: {

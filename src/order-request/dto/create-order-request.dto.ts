@@ -7,13 +7,16 @@ import {
   IsOptional,
   IsDateString,
   Min,
-  Max,
   Length,
   ValidateIf,
   IsInt,
+  IsArray,
+  ValidateNested,
+  ArrayMinSize,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
+import { CustomProductDto } from './custom-product.dto';
 
 export enum OrderType {
   EXISTING_PRODUCT = 'EXISTING_PRODUCT',
@@ -43,7 +46,9 @@ export class CreateOrderRequestDto {
     required: false,
     description: 'Product ID (required for existing products)',
   })
-  @ValidateIf((o) => o.orderType === OrderType.EXISTING_PRODUCT)
+  @ValidateIf(
+    (o: CreateOrderRequestDto) => o.orderType === OrderType.EXISTING_PRODUCT,
+  )
   @IsInt({ message: 'Product ID must be an integer' })
   @Type(() => Number)
   productId?: number;
@@ -110,10 +115,10 @@ export class CreateOrderRequestDto {
   @ApiProperty({
     example: true,
   })
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value: unknown }): boolean => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-    return value;
+    return value as boolean;
   })
   @IsBoolean({ message: 'Advance payment must be a boolean' })
   advancePayment: boolean;
@@ -123,7 +128,7 @@ export class CreateOrderRequestDto {
     required: false,
     minimum: 0.01,
   })
-  @ValidateIf((o) => o.advancePayment === true)
+  @ValidateIf((o: CreateOrderRequestDto) => o.advancePayment === true)
   @IsNumber({}, { message: 'Advance pay must be a number' })
   @Min(0.01, { message: 'Advance pay must be greater than 0' })
   @Type(() => Number)
@@ -150,36 +155,73 @@ export class CreateOrderRequestDto {
   deliveryDate?: string;
 
   @ApiProperty({
+    type: [CustomProductDto],
+    required: false,
+    description:
+      'Array of custom products (required for custom product orders)',
+  })
+  @ValidateIf(
+    (o: CreateOrderRequestDto) => o.orderType === OrderType.CUSTOM_PRODUCT,
+  )
+  @Transform(({ value }: { value: unknown }): unknown => {
+    console.log('Transform customProducts - Input type:', typeof value);
+    console.log('Transform customProducts - Input value:', value);
+
+    // If it's a string (from FormData), parse it first
+    if (typeof value === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        console.log('Transform customProducts - Parsed:', parsed);
+
+        // Convert plain objects to CustomProductDto instances
+        if (Array.isArray(parsed)) {
+          const { plainToInstance } = require('class-transformer');
+          const instances = plainToInstance(CustomProductDto, parsed, {
+            excludeExtraneousValues: false,
+          });
+          console.log('Transform customProducts - Converted to instances:', instances);
+          return instances;
+        }
+        return parsed;
+      } catch (error) {
+        console.error('Transform customProducts - Parse error:', error);
+        return value;
+      }
+    }
+    // Otherwise return as-is (already an array or object)
+    console.log('Transform customProducts - Returning as-is');
+    return value;
+  })
+  @Type(() => CustomProductDto)
+  @IsArray({ message: 'Custom products must be an array' })
+  @ArrayMinSize(1, { message: 'At least one custom product is required' })
+  @ValidateNested({ each: true })
+  customProducts?: CustomProductDto[];
+
+  // Deprecated fields - kept for backward compatibility
+  @ApiProperty({
     example: 'Custom L-Shaped Leather Sofa',
     required: false,
-    minLength: 3,
-    maxLength: 100,
+    deprecated: true,
+    description: 'Deprecated: Use customProducts array instead',
   })
-  @ValidateIf((o) => o.orderType === OrderType.CUSTOM_PRODUCT)
-  @IsString({ message: 'Custom product name must be a string' })
-  @Length(3, 100, {
-    message: 'Custom product name must be between 3 and 100 characters',
-  })
-  @Transform(({ value }: { value: string }) => value?.trim())
+  @IsOptional()
   customProductName?: string;
 
   @ApiProperty({
     example: 'Brown leather, 8-seater, with reclining feature',
     required: false,
-    minLength: 10,
-    maxLength: 1000,
+    deprecated: true,
+    description: 'Deprecated: Use customProducts array instead',
   })
-  @ValidateIf((o) => o.orderType === OrderType.CUSTOM_PRODUCT)
-  @IsString({ message: 'Custom product description must be a string' })
-  @Length(10, 1000, {
-    message:
-      'Custom product description must be between 10 and 1000 characters',
-  })
+  @IsOptional()
   customProductDescription?: string;
 
   @ApiProperty({
     example: 4,
     required: false,
+    deprecated: true,
+    description: 'Deprecated: Use customProducts array instead',
   })
   @IsOptional()
   @IsInt({ message: 'Category ID must be an integer' })

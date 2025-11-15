@@ -11,7 +11,6 @@ import { AuthModule } from './auth/auth.module';
 import { ProfileModule } from './profile/profile.module';
 import { ProductsModule } from './products/products.module';
 import { UploadModule } from './upload/upload.module';
-import { FacebookIntegrationModule } from './facebook-integration/facebook-integration.module';
 import { CategoryModule } from './category/category.module';
 import { OrderRequestModule } from './order-request/order-request.module';
 import { CustomProductModule } from './custom-product/custom-product.module';
@@ -22,14 +21,14 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { UsersModule } from './users/users.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ChatModule } from './chat/chat.module';
-import facebookConfig from './facebook-integration/config/facebook.config';
+import { AnnouncementsModule } from './announcements/announcements.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      load: [facebookConfig],
     }),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
@@ -90,7 +89,6 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     ProfileModule,
     ProductsModule,
     UploadModule,
-    FacebookIntegrationModule,
     CategoryModule,
     OrderRequestModule,
     CustomProductModule,
@@ -101,6 +99,8 @@ import facebookConfig from './facebook-integration/config/facebook.config';
     UsersModule,
     AnalyticsModule,
     ChatModule,
+    AnnouncementsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

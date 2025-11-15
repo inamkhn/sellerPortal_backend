@@ -11,9 +11,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { EmailModule } from '../common/services/email.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { DatabaseModule } from '../database/database.module';
 
 @Module({
   imports: [
+    DatabaseModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -28,6 +31,7 @@ import { EmailModule } from '../common/services/email.module';
       inject: [ConfigService],
     }),
     EmailModule,
+    NotificationsModule,
   ],
   controllers: [AuthController],
   providers: [

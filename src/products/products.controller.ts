@@ -78,7 +78,7 @@ export class ProductsController {
   ) {
     let photoUrls: string[] = [];
 
-    // Handle image uploads if files are provided
+    // Handle multipart file uploads
     if (files && files.length > 0) {
       // Validate uploaded files
       this.uploadService.validateImageFiles(files);
@@ -90,8 +90,19 @@ export class ProductsController {
       );
       photoUrls = uploadResults.map((result) => result.secure_url);
     }
+    // Handle base64 images from request body
+    else if (createProductDto.photos && createProductDto.photos.length > 0) {
+      const uploadResults = await this.uploadService.uploadBase64Images(
+        createProductDto.photos,
+        'products',
+      );
+      photoUrls = uploadResults.map((result) => result.secure_url);
+    }
 
-    return this.productsService.create(user.id, createProductDto, photoUrls);
+    // Remove photos from DTO before passing to service
+    const { photos, ...productData } = createProductDto;
+
+    return this.productsService.create(user.id, productData, photoUrls);
   }
 
   @Get()

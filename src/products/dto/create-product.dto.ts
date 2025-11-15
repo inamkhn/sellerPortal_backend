@@ -144,4 +144,15 @@ export class CreateProductDto {
   @IsString()
   @Length(0, 50, { message: 'SKU must not exceed 50 characters' })
   sku?: string;
+
+  @ApiProperty({
+    description: 'Product photos as base64 encoded strings',
+    example: ['data:image/jpeg;base64,/9j/4AAQSkZJRg...'],
+    type: [String],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true, message: 'Each photo must be a base64 string' })
+  photos?: string[];
 }
