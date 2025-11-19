@@ -19,7 +19,7 @@ export class OrderRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) { }
+  ) {}
 
   async create(
     userId: number,
@@ -197,7 +197,9 @@ export class OrderRequestService {
 
               // Generate product name for notifications
               let productName = 'Product';
-              if (createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT) {
+              if (
+                createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT
+              ) {
                 if (
                   completeOrder?.customProducts &&
                   completeOrder.customProducts.length > 0
@@ -332,20 +334,21 @@ export class OrderRequestService {
           createdAt: sortOrder,
         },
         include: {
-          product: {
+          user: {
             select: {
               id: true,
-              title: true,
-              price: true,
-              photos: true,
-            },
-          },
-          customProducts: {
-            include: {
-              category: {
+              firstName: true,
+              lastName: true,
+              profile: {
                 select: {
-                  id: true,
-                  name: true,
+                  referredBy: true,
+                  referrer: {
+                    select: {
+                      id: true,
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
                 },
               },
             },

@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateSettlementDto,
   UpdateSettlementDto,
@@ -18,11 +19,16 @@ import {
   SettlementType,
   Role,
   Prisma,
+  NotificationType,
+  OrderStatus,
 } from '@prisma/client';
 
 @Injectable()
 export class OrderSettlementService {
-  constructor(private readonly database: PrismaService) {}
+  constructor(
+    private readonly database: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   /**
    * Create/Update OrderSettlement and create Settlement records (Admin fills in amounts and creates payment records)
@@ -101,7 +107,20 @@ export class OrderSettlementService {
       const referrer = orderRequest.user.profile?.referrer;
       referrerRole = referrer?.role || Role.USER;
 
-      if (referrerRole === Role.USER) {
+      // Check if seller is referring themselves (self-referral)
+      const isSelfReferral = referrerId === sellerId;
+
+      if (isSelfReferral) {
+        // Self-referral: No commission, seller gets full amount
+        referralCommission = null;
+        referralCommissionRate = null;
+        isFixedCommission = false;
+        netSellerAmount = grossSellerAmount;
+        orderSettlementStatus = OrderSettlementStatus.SETTLED;
+        shouldCreateSettlements = true;
+        referrerRole = null; // Clear referrer role for self-referral
+        // Note: We keep referrerId in the record for tracking purposes
+      } else if (referrerRole === Role.USER) {
         // USER referrer: 10% fixed commission
         referralCommissionRate = 10;
         referralCommission = (grossSellerAmount * referralCommissionRate) / 100;
@@ -217,13 +236,136 @@ export class OrderSettlementService {
         settlements.push(adminSettlement);
       }
 
+      // Update OrderRequest status to DELIVERED if settlement is SETTLED
+      if (orderSettlementStatus === OrderSettlementStatus.SETTLED) {
+        await tx.orderRequest.update({
+          where: { id: dto.orderRequestId },
+          data: { status: OrderStatus.DELIVERED },
+        });
+      }
+
       return { orderSettlement, settlements };
     });
+
+    // Send notifications based on settlement status
+    if (orderSettlementStatus === OrderSettlementStatus.SETTLED) {
+      // Notify seller and USER referrer when settlement is completed
+      await this.sendSettlementNotifications(
+        result.orderSettlement,
+        sellerId,
+        referrerId || null,
+        referrerRole,
+        netSellerAmount,
+        referralCommission,
+      );
+    } else if (
+      orderSettlementStatus === OrderSettlementStatus.MANAGER_PENDING &&
+      referrerId
+    ) {
+      // Notify REFERRAL_MANAGER that they need to set commission rate
+      await this.notifyReferralManagerPending(
+        referrerId,
+        result.orderSettlement,
+        grossSellerAmount,
+      );
+    }
 
     return {
       ...result,
       status: orderSettlementStatus,
     };
+  }
+
+  /**
+   * Send notifications to seller and referrer (if applicable) when settlement is created
+   */
+  private async sendSettlementNotifications(
+    orderSettlement: OrderSettlement,
+    sellerId: number,
+    referrerId: number | null,
+    referrerRole: Role | null,
+    netSellerAmount: number,
+    referralCommission: number | null,
+  ) {
+    const formatAmount = (amount: number) => {
+      return new Intl.NumberFormat('en-AE', {
+        style: 'currency',
+        currency: 'AED',
+        minimumFractionDigits: 0,
+      }).format(amount);
+    };
+
+    // 1. Always notify the seller
+    await this.notificationsService.createNotification({
+      userId: sellerId,
+      type: NotificationType.SETTLEMENT_UPDATE,
+      title: 'Settlement Processed',
+      message: `Your settlement for Order #${orderSettlement.orderRequestId} has been processed. You will receive ${formatAmount(netSellerAmount)}.`,
+      actionUrl: ``,
+      referenceId: orderSettlement.id,
+      metadata: {
+        orderRequestId: orderSettlement.orderRequestId,
+        netSellerAmount,
+        settlementId: orderSettlement.id,
+      },
+    });
+
+    // 2. Notify USER referrer if they exist and earned commission
+    if (
+      referrerId &&
+      referrerRole === Role.USER &&
+      referralCommission &&
+      referralCommission > 0
+    ) {
+      await this.notificationsService.createNotification({
+        userId: referrerId,
+        type: NotificationType.SETTLEMENT_UPDATE,
+        title: 'Referral Commission Earned',
+        message: `You earned a referral commission of ${formatAmount(referralCommission)} from Order #${orderSettlement.orderRequestId}.`,
+        actionUrl: ``,
+        referenceId: orderSettlement.id,
+        metadata: {
+          orderRequestId: orderSettlement.orderRequestId,
+          referralCommission,
+          settlementId: orderSettlement.id,
+        },
+      });
+    }
+
+    // Note: REFERRAL_MANAGER notifications will be sent when they set their commission rate
+    // Note: Admin is not notified (they created the settlement)
+  }
+
+  /**
+   * Notify REFERRAL_MANAGER that they need to set commission rate
+   */
+  private async notifyReferralManagerPending(
+    referralManagerId: number,
+    orderSettlement: OrderSettlement,
+    grossSellerAmount: number,
+  ) {
+    const formatAmount = (amount: number) => {
+      return new Intl.NumberFormat('en-AE', {
+        style: 'currency',
+        currency: 'AED',
+        minimumFractionDigits: 0,
+      }).format(amount);
+    };
+
+    await this.notificationsService.createNotification({
+      userId: referralManagerId,
+      type: NotificationType.SETTLEMENT_UPDATE,
+      title: 'Action Required: Set Commission Rate',
+      message: `A new settlement for Order #${orderSettlement.orderRequestId} is awaiting your commission rate. Gross seller amount: ${formatAmount(grossSellerAmount)}. Please set your commission rate.`,
+      actionUrl: `/commission`,
+      referenceId: orderSettlement.id,
+      metadata: {
+        orderRequestId: orderSettlement.orderRequestId,
+        grossSellerAmount,
+        settlementId: orderSettlement.id,
+        requiresAction: true,
+      },
+    });
   }
 
   /**
@@ -276,13 +418,29 @@ export class OrderSettlementService {
         take: limit,
         include: {
           orderRequest: {
-            include: {
+            select: {
+              id: true,
+              userId: true,
+              customerName: true,
               user: {
                 select: {
                   id: true,
                   firstName: true,
                   lastName: true,
                   email: true,
+                  profile: {
+                    select: {
+                      referredBy: true,
+                      referrer: {
+                        select: {
+                          id: true,
+                          firstName: true,
+                          lastName: true,
+                          email: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -293,8 +451,22 @@ export class OrderSettlementService {
       this.database.orderSettlement.count({ where }),
     ]);
 
+    // Map settlements to include referrer name from the nested structure
+    const mappedSettlements = settlements.map((settlement) => {
+      const referrer = settlement.orderRequest?.user?.profile?.referrer;
+      const referrerName = referrer
+        ? `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+          referrer.email
+        : null;
+
+      return {
+        ...settlement,
+        referrerName,
+      };
+    });
+
     return {
-      data: settlements,
+      data: mappedSettlements,
       meta: {
         total,
         page,
@@ -584,7 +756,7 @@ export class OrderSettlementService {
     const referralCommission = (grossSellerAmount * commissionRate) / 100;
     const netSellerAmount = grossSellerAmount - referralCommission;
 
-    return this.database.$transaction(async (tx) => {
+    const result = await this.database.$transaction(async (tx) => {
       // Update OrderSettlement
       const updated = await tx.orderSettlement.update({
         where: { id: orderSettlementId },
@@ -669,10 +841,58 @@ export class OrderSettlementService {
         });
       }
 
-      return {
-        message: 'Commission rate set successfully',
-        orderSettlement: updated,
-      };
+      // Update OrderRequest status to DELIVERED when settlement becomes SETTLED
+      await tx.orderRequest.update({
+        where: { id: orderSettlement.orderRequestId },
+        data: { status: OrderStatus.DELIVERED },
+      });
+
+      return updated;
     });
+
+    // Send notifications to seller and referral manager after commission is set
+    const formatAmount = (amount: number) => {
+      return new Intl.NumberFormat('en-AE', {
+        style: 'currency',
+        currency: 'AED',
+        minimumFractionDigits: 0,
+      }).format(amount);
+    };
+
+    // Notify the seller
+    await this.notificationsService.createNotification({
+      userId: result.orderRequest.userId,
+      type: NotificationType.SETTLEMENT_UPDATE,
+      title: 'Settlement Processed',
+      message: `Your settlement for Order #${result.orderRequestId} has been processed. You will receive ${formatAmount(netSellerAmount)}.`,
+      actionUrl: ``,
+      referenceId: orderSettlementId,
+      metadata: {
+        orderRequestId: result.orderRequestId,
+        netSellerAmount,
+        settlementId: orderSettlementId,
+      },
+    });
+
+    // Notify the referral manager about their commission
+    await this.notificationsService.createNotification({
+      userId: referralManagerId,
+      type: NotificationType.SETTLEMENT_UPDATE,
+      title: 'Commission Set Successfully',
+      message: `You set a ${commissionRate}% commission rate for Order #${result.orderRequestId}. You will receive ${formatAmount(referralCommission)}.`,
+      actionUrl: ``,
+      referenceId: orderSettlementId,
+      metadata: {
+        orderRequestId: result.orderRequestId,
+        referralCommission,
+        commissionRate,
+        settlementId: orderSettlementId,
+      },
+    });
+
+    return {
+      message: 'Commission rate set successfully',
+      orderSettlement: result,
+    };
   }
 }

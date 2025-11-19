@@ -81,23 +81,40 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
-    // Validate referral code if provided
-    let referrer: User | null = null;
-    if (
-      referralCode &&
-      typeof referralCode === 'string' &&
-      referralCode.trim()
-    ) {
-      const referrerProfile = await this.prisma.profile.findUnique({
-        where: { referralCode: referralCode.trim() },
-        include: { user: true },
-      });
+    // Validate referral code (now required)
+    if (!referralCode || !referralCode.trim()) {
+      throw new BadRequestException(
+        'Referral code is required for registration',
+      );
+    }
 
-      if (!referrerProfile || !referrerProfile.user) {
-        throw new BadRequestException('Invalid referral code');
-      }
+    const referrerProfile = await this.prisma.profile.findUnique({
+      where: { referralCode: referralCode.trim() },
+      include: { user: true },
+    });
 
-      referrer = referrerProfile.user;
+    if (!referrerProfile || !referrerProfile.user) {
+      throw new BadRequestException(
+        'Invalid referral code. Please check the code and try again.',
+      );
+    }
+
+    const referrer = referrerProfile.user;
+
+    // Additional validation: Check if referrer account is verified
+    // Only verified users can refer others
+    if (!referrer.isVerified) {
+      throw new BadRequestException(
+        'This referral code belongs to an unverified account and cannot be used.',
+      );
+    }
+
+    // Check if referrer profile is verified
+    // Any user (USER, ADMIN, REFERRAL_MANAGER) can refer others, but their profile must be verified
+    if (!referrerProfile.verified) {
+      throw new BadRequestException(
+        'This referral code is not yet activated. The profile needs to be verified by an admin.',
+      );
     }
 
     // Hash password
@@ -126,22 +143,20 @@ export class AuthService {
       fullName: `${firstName || ''} ${lastName || ''}`.trim() || null,
       referralCode: await this.generateUniqueReferralCode(),
       verified: false,
-      referredBy: referrer?.id || null,
+      referredBy: referrer.id,
     };
 
     await this.prisma.profile.create({
       data: profileData,
     });
 
-    // Create referral record if there's a referrer
-    if (referrer) {
-      await this.prisma.referral.create({
-        data: {
-          referrerId: referrer.id,
-          refereeId: user.id,
-        },
-      });
-    }
+    // Create referral record (always required now)
+    await this.prisma.referral.create({
+      data: {
+        referrerId: referrer.id,
+        refereeId: user.id,
+      },
+    });
 
     // Generate access token
     const accessToken = this.generateAccessToken(user);
@@ -169,35 +184,33 @@ export class AuthService {
             'ADMIN',
             'SYSTEM',
             'New User Registration',
-            `New user ${userName} (${email}) has registered${referrer ? ` using referral code from ${referrer.firstName} ${referrer.lastName}` : ''}.`,
+            `New user ${userName} (${email}) has registered using referral code from ${referrer.firstName} ${referrer.lastName}.`,
             {
               actionUrl: `/admin/users/${user.id}`,
               referenceId: user.id,
               metadata: {
                 userId: user.id,
                 email: user.email,
-                wasReferred: !!referrer,
-                referrerId: referrer?.id,
+                wasReferred: true,
+                referrerId: referrer.id,
               },
             },
           );
 
-          // 2. If user was referred, notify the referrer
-          if (referrer) {
-            await this.notificationsService.createNotification({
-              userId: referrer.id,
-              type: 'SYSTEM',
-              title: 'New Referral Signup',
-              message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
-              actionUrl: `/referrals`,
-              referenceId: user.id,
-              metadata: {
-                newUserId: user.id,
-                newUserEmail: email,
-                newUserName: userName,
-              },
-            });
-          }
+          // 2. Notify the referrer about new signup
+          await this.notificationsService.createNotification({
+            userId: referrer.id,
+            type: 'SYSTEM',
+            title: 'New Referral Signup',
+            message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
+            actionUrl: `/referrals`,
+            referenceId: user.id,
+            metadata: {
+              newUserId: user.id,
+              newUserEmail: email,
+              newUserName: userName,
+            },
+          });
 
           console.log(`Registration notifications sent for user ${user.id}`);
         } catch (error) {
@@ -221,18 +234,13 @@ export class AuthService {
       tokens: {
         accessToken,
       },
-      referralInfo: referrer
-        ? {
-            wasReferred: true,
-            referrerName:
-              `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
-              referrer.email,
-            userReferralCode: profileData.referralCode,
-          }
-        : {
-            wasReferred: false,
-            userReferralCode: profileData.referralCode,
-          },
+      referralInfo: {
+        wasReferred: true,
+        referrerName:
+          `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+          referrer.email,
+        userReferralCode: profileData.referralCode,
+      },
     };
   }
 

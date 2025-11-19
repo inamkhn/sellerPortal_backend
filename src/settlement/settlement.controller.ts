@@ -7,7 +7,6 @@ import {
   Query,
   Body,
   UseGuards,
-  //   NotFoundException,
   ForbiddenException,
   UseInterceptors,
   UploadedFile,
@@ -40,6 +39,66 @@ export class SettlementController {
     private readonly settlementService: SettlementService,
     private readonly uploadService: UploadService,
   ) {}
+
+  @Get('pending-total')
+  @ApiOperation({
+    summary: 'Get pending settlement total and payout window status',
+    description:
+      'Returns total pending settlements, payout window status, next payout date, and rate limit status',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pending settlement data retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getPendingTotal(@GetUser() user: User) {
+    const [totalPending, hasRequestedToday] = await Promise.all([
+      this.settlementService.getPendingSettlementTotal(user.id),
+      this.settlementService.hasRequestedPayoutToday(user.id),
+    ]);
+
+    const canRequestPayout = this.settlementService.isPayoutWindowActive();
+    const nextPayoutDate = this.settlementService.getNextPayoutDate();
+
+    return {
+      success: true,
+      data: {
+        totalPending,
+        canRequestPayout,
+        nextPayoutDate,
+        hasRequestedToday,
+      },
+    };
+  }
+
+  @Post('request-payout')
+  @ApiOperation({
+    summary: 'Request payout for pending settlements',
+    description:
+      'Submit a payout request for all pending settlements. Only available during payout windows (15-16 and 30-31-1). Limited to one request per day.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Payout request submitted successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Bad request - outside payout window, already requested today, no pending settlements, or missing bank account',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async requestPayout(@GetUser() user: User) {
+    const userName =
+      `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+
+    const data = await this.settlementService.requestPayout(user.id, userName);
+
+    return {
+      success: true,
+      message: 'Payout request submitted successfully',
+      data,
+    };
+  }
 
   @Get()
   @ApiOperation({
@@ -83,7 +142,9 @@ export class SettlementController {
       },
     }),
   )
-  @ApiOperation({ summary: 'Create a new settlement (Admin only)' })
+  @ApiOperation({
+    summary: 'Create a new settlement (Admin and Referral Manager)',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: 201,
@@ -91,14 +152,19 @@ export class SettlementController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin or Referral Manager only',
+  })
   async create(
     @GetUser() user: User,
     @Body() createDto: CreateSettlementDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (user.role !== 'ADMIN') {
-      throw new ForbiddenException('Only admins can create settlements');
+    if (user.role !== 'ADMIN' && user.role !== 'REFERRAL_MANAGER') {
+      throw new ForbiddenException(
+        'Only admins and referral managers can create settlements',
+      );
     }
 
     let paymentProofUrl: string | undefined;
@@ -117,6 +183,8 @@ export class SettlementController {
       createDto.userId,
       createDto.settlementType,
       createDto.amount,
+      user.id,
+      user.role,
       createDto.notes,
       paymentProofUrl,
     );
@@ -144,6 +212,26 @@ export class SettlementController {
 
   //     return settlement;
   //   }
+
+  @Get('admin/grouped-by-manager')
+  @ApiOperation({
+    summary: 'Get settlements grouped by referral manager (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Settlements grouped by manager retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async getSettlementsGroupedByManager(
+    @GetUser() user: User,
+    @Query() query: SettlementQueryDto,
+  ) {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException('Only admins can view grouped settlements');
+    }
+    return this.settlementService.getSettlementsGroupedByManager(query);
+  }
 
   @Get('referral-manager/history')
   @ApiOperation({
@@ -216,7 +304,7 @@ export class SettlementController {
       },
     }),
   )
-  @ApiOperation({ summary: 'Update a settlement (Admin only)' })
+  @ApiOperation({ summary: 'Update a settlement (Admin and Referral Manager)' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: 200,
@@ -225,17 +313,13 @@ export class SettlementController {
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 404, description: 'Settlement not found' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Access denied' })
   async update(
     @GetUser() user: User,
     @Param('id') id: string,
     @Body() updateDto: UpdateSettlementDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (user.role !== 'ADMIN') {
-      throw new ForbiddenException('Only admins can update settlements');
-    }
-
     const { amount, status, paidAt, paymentProof, notes } = updateDto;
 
     const updateData: {
@@ -272,6 +356,6 @@ export class SettlementController {
       updateData.notes = notes;
     }
 
-    return this.settlementService.update(+id, updateData);
+    return this.settlementService.update(+id, user.id, user.role, updateData);
   }
 }

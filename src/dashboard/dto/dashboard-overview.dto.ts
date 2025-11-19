@@ -27,6 +27,9 @@ class StatsDto {
 
   @ApiProperty({ example: 82.9 })
   successRate: number;
+
+  @ApiProperty({ example: 5000.0 })
+  pendingSettlementAmount: number;
 }
 
 class TrendsDto {
@@ -40,10 +43,21 @@ class TrendsDto {
   completionRateChange: number;
 }
 
+class PayoutDto {
+  @ApiProperty({ example: true })
+  canRequestPayout: boolean;
+
+  @ApiProperty({ example: '2024-01-15T00:00:00Z' })
+  nextPayoutDate: string;
+}
+
 export class DashboardOverviewDto {
   @ApiProperty({ type: StatsDto })
   stats: StatsDto;
 
   @ApiProperty({ type: TrendsDto })
   trends: TrendsDto;
+
+  @ApiProperty({ type: PayoutDto })
+  payout: PayoutDto;
 }

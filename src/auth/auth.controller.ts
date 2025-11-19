@@ -47,7 +47,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register a new user',
     description:
-      'Creates a new user account with email and password. Optionally accepts referral code. Sends email verification OTP.',
+      'Creates a new user account with email and password. Requires a valid referral code. Sends email verification OTP.',
   })
   @ApiResponse({
     status: 201,
@@ -104,7 +104,11 @@ export class AuthController {
         message: [
           'Please provide a valid email address',
           'Password must be at least 8 characters long',
-          'Invalid referral code',
+          'Referral code is required',
+          'Referral code must be at least 3 characters',
+          'Invalid referral code. Please check the code and try again.',
+          'This referral code belongs to an unverified account and cannot be used.',
+          'This referral code is not yet activated. The profile needs to be verified by an admin.',
         ],
         error: 'Bad Request',
       },

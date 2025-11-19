@@ -14,12 +14,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import {
-  GetUsersQueryDto,
-  UpdateUserDto,
-  UpdateProfileDto,
-  UpdateRoleDto,
-} from './dto';
+import { GetUsersQueryDto, UpdateUserDto, UpdateRoleDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -108,22 +103,11 @@ export class UsersController {
   }
 
   /**
-   * PATCH /api/admin/users/:id/profile
-   * Update user profile
-   */
-  @Patch(':id/profile')
-  updateProfile(
-    @Param('id', ParseIntPipe) _id: number,
-    @Body(ValidationPipe) _updateProfileDto: UpdateProfileDto,
-  ) {
-    // This would need to be implemented in the service
-    // For now, we can return a not implemented response
-    return { message: 'Profile update endpoint - to be implemented' };
-  }
-
-  /**
    * PATCH /api/admin/users/:id/role
-   * Change user role
+   * Change user role and optionally update profile verification status
+   * Body: { role: Role, verified?: boolean }
+   * - If verified is provided, sets profile.verified to that value
+   * - If verified is not provided and role is REFERRAL_MANAGER, auto-verifies profile
    */
   @Patch(':id/role')
   async updateUserRole(
@@ -131,15 +115,6 @@ export class UsersController {
     @Body(ValidationPipe) updateRoleDto: UpdateRoleDto,
   ) {
     return await this.usersService.updateUserRole(id, updateRoleDto);
-  }
-
-  /**
-   * PATCH /api/admin/users/:id/verify
-   * Verify user account
-   */
-  @Patch(':id/verify')
-  async verifyUser(@Param('id', ParseIntPipe) id: number) {
-    return await this.usersService.verifyUser(id);
   }
 
   /**

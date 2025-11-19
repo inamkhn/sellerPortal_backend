@@ -49,11 +49,11 @@ export class RegisterDto {
   lastName?: string;
 
   @ApiProperty({
-    description: 'Referral code from existing user',
+    description: 'Referral code from existing user (required)',
     example: 'ADMIN001',
-    required: false,
+    required: true,
   })
-  @IsOptional()
-  @IsString()
-  referralCode?: string;
+  @IsString({ message: 'Referral code is required' })
+  @MinLength(3, { message: 'Referral code must be at least 3 characters' })
+  referralCode: string;
 }

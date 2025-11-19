@@ -81,6 +81,14 @@ export class ProductsService {
 
     return this.prisma.product.create({
       data: productData,
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     } as any);
   }
 
@@ -144,6 +152,14 @@ export class ProductsService {
         skip,
         take: limit,
         orderBy,
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
       } as any),
       this.prisma.product.count({ where }),
     ]);
@@ -162,6 +178,14 @@ export class ProductsService {
   async findOne(id: number) {
     const product = await this.prisma.product.findUnique({
       where: { id },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     } as any);
 
     if (!product) {
@@ -224,6 +248,14 @@ export class ProductsService {
     return this.prisma.product.update({
       where: { id },
       data: updateData,
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     } as any);
   }
 

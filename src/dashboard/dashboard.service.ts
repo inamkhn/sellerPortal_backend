@@ -126,6 +126,9 @@ export class DashboardService {
         : 0;
     const completionRateChange = successRate - previousSuccessRate;
 
+    // Get pending settlement amount
+    const pendingSettlementAmount = await this.getPendingSettlements(userId);
+
     return {
       stats: {
         totalOrders,
@@ -139,13 +142,93 @@ export class DashboardService {
         ordersThisWeek,
         averageOrderValue: Number(averageOrderValue.toFixed(2)),
         successRate: Number(successRate.toFixed(1)),
+        pendingSettlementAmount: Number(pendingSettlementAmount.toFixed(2)),
       },
       trends: {
         ordersGrowth: Number(ordersGrowth.toFixed(1)),
         earningsGrowth: Number(earningsGrowth.toFixed(1)),
         completionRateChange: Number(completionRateChange.toFixed(1)),
       },
+      payout: {
+        canRequestPayout: this.isPayoutWindowActive(),
+        nextPayoutDate: this.getNextPayoutDate(),
+      },
     };
+  }
+
+  // Helper: Get pending settlements for user
+  private async getPendingSettlements(userId: number): Promise<number> {
+    const result = await this.prisma.settlement.aggregate({
+      where: {
+        userId,
+        status: 'PENDING',
+        settlementType: {
+          in: ['SELLER_PAYMENT', 'REFERRAL_PAYMENT'],
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    return Number(result._sum.amount || 0);
+  }
+
+  // Helper: Check if current date is in payout window
+  private isPayoutWindowActive(): boolean {
+    const now = new Date();
+    const day = now.getDate();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+
+    // Mid-month window: 15-16
+    if (day === 15 || day === 16) {
+      return true;
+    }
+
+    // Month-end window: 30-31
+    if (day === 30 || day === 31) {
+      return true;
+    }
+
+    // First of month (for months with <31 days)
+    if (day === 1) {
+      const lastMonth = new Date(year, month - 1, 1);
+      const daysInLastMonth = new Date(
+        lastMonth.getFullYear(),
+        lastMonth.getMonth() + 1,
+        0,
+      ).getDate();
+      return daysInLastMonth < 31;
+    }
+
+    return false;
+  }
+
+  // Helper: Get next available payout date
+  private getNextPayoutDate(): string {
+    const now = new Date();
+    const day = now.getDate();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+
+    // If currently in payout window, return current date
+    if (this.isPayoutWindowActive()) {
+      return now.toISOString();
+    }
+
+    // Determine next payout date
+    let nextDate: Date;
+
+    if (day < 15) {
+      nextDate = new Date(year, month, 15);
+    } else if (day >= 17 && day < 30) {
+      nextDate = new Date(year, month, 30);
+    } else {
+      nextDate = new Date(year, month + 1, 15);
+    }
+
+    return nextDate.toISOString();
   }
 
   // Helper: Build user filter based on role

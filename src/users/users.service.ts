@@ -68,6 +68,7 @@ export class UsersService {
               fullName: true,
               whatsappNumber: true,
               referralCode: true,
+              verified: true,
             },
           },
           _count: {
@@ -110,6 +111,13 @@ export class UsersService {
           createdAt: user.createdAt,
           totalOrders: user._count.orderRequests,
           totalRevenue: revenue._sum.decidedPrice?.toNumber() || 0,
+          profile: user.profile
+            ? {
+                verified: user.profile.verified,
+                fullName: user.profile.fullName,
+                whatsappNumber: user.profile.whatsappNumber,
+              }
+            : null,
         };
       }),
     );
@@ -381,7 +389,7 @@ export class UsersService {
   }
 
   /**
-   * Update user role
+   * Update user role and profile verification status
    */
   async updateUserRole(userId: number, updateRoleDto: UpdateRoleDto) {
     const user = await this.prisma.user.findUnique({
@@ -393,66 +401,54 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // If changing to REFERRAL_MANAGER and no referral code exists, generate one
-    if (
-      updateRoleDto.role === 'REFERRAL_MANAGER' &&
-      (!user.profile || !user.profile.referralCode)
-    ) {
-      // Generate unique referral code
-      const referralCode = await this.generateUniqueReferralCode();
+    // Determine verification status
+    // If verified is explicitly provided, use it
+    // Otherwise, auto-verify when promoting to REFERRAL_MANAGER
+    const shouldVerify =
+      updateRoleDto.verified !== undefined
+        ? updateRoleDto.verified
+        : updateRoleDto.role === 'REFERRAL_MANAGER';
 
-      // Update or create profile with referral code
+    // Handle profile updates
+    if (
+      updateRoleDto.role === 'REFERRAL_MANAGER' ||
+      updateRoleDto.verified !== undefined
+    ) {
+      // Generate unique referral code if doesn't exist
+      const referralCode =
+        user.profile?.referralCode || (await this.generateUniqueReferralCode());
+
+      // Update or create profile
       if (user.profile) {
         await this.prisma.profile.update({
           where: { userId },
-          data: { referralCode },
+          data: {
+            referralCode,
+            verified: shouldVerify,
+          },
         });
       } else {
         await this.prisma.profile.create({
           data: {
             userId,
             referralCode,
+            verified: shouldVerify,
           },
         });
       }
     }
 
-    // Update user role
+    // Update user role and verification status
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
-      data: { role: updateRoleDto.role },
-      include: { profile: true },
+      data: {
+        role: updateRoleDto.role,
+        isVerified: shouldVerify ? true : user.isVerified,
+      },
+      include: {
+        profile: true,
+      },
     });
-
-    return updatedUser;
-  }
-
-  /**
-   * Verify user account
-   */
-  async verifyUser(userId: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { profile: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Update user verification
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: { isVerified: true },
-    });
-
-    // Update profile verification if profile exists
-    if (user.profile) {
-      await this.prisma.profile.update({
-        where: { userId },
-        data: { verified: true },
-      });
-    }
 
     return updatedUser;
   }

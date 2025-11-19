@@ -72,6 +72,5 @@ async function bootstrap() {
   const logger = app.get(Logger);
   logger.log(`🚀 Application is running on: http://localhost:${port}`);
   logger.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
-  logger.log(`📦 Request size limit: ${requestSizeLimit}`);
 }
 void bootstrap();

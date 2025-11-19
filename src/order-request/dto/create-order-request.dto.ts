@@ -179,7 +179,10 @@ export class CreateOrderRequestDto {
           const instances = plainToInstance(CustomProductDto, parsed, {
             excludeExtraneousValues: false,
           });
-          console.log('Transform customProducts - Converted to instances:', instances);
+          console.log(
+            'Transform customProducts - Converted to instances:',
+            instances,
+          );
           return instances;
         }
         return parsed;

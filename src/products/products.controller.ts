@@ -100,6 +100,7 @@ export class ProductsController {
     }
 
     // Remove photos from DTO before passing to service
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { photos, ...productData } = createProductDto;
 
     return this.productsService.create(user.id, productData, photoUrls);
