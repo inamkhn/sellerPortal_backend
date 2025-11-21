@@ -33,8 +33,8 @@ async function bootstrap() {
     origin: [
       configService.get<string>('FRONTEND_URL') || 'http://localhost:3000',
       'http://localhost:3002',
-      'https://sellerportal-elsl.onrender.com', // Production frontend
-      'https://sellers-portal.vercel.app', // Vercel deployment
+      'https://sellerpotal-elsl.onrender.com', // Production frontend
+      'https://sellers-potal.vercel.app', // Vercel deployment
       /\.vercel\.app$/, // Allow all Vercel preview deployments
       'null', // Allow file:// protocol for testing
     ],
