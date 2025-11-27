@@ -220,7 +220,7 @@ export class OrderRequestService {
                 type: 'ORDER_UPDATE',
                 title: 'Order Request Created',
                 message: `Your order request #${orderRequest.id} for "${productName}" has been created successfully and is pending admin approval.`,
-                actionUrl: `/admin-orders/${orderRequest.id}`,
+                actionUrl: `/orders/${orderRequest.id}`,
                 referenceId: orderRequest.id,
                 metadata: {
                   orderType,
@@ -235,7 +235,7 @@ export class OrderRequestService {
                 'New Order Request',
                 `New ${orderType.toLowerCase()} order request #${orderRequest.id} from ${completeOrder?.user?.firstName} ${completeOrder?.user?.lastName} for "${productName}". Amount: AED ${createOrderRequestDto.decidedPrice}`,
                 {
-                  actionUrl: `/admin/orders/${orderRequest.id}`,
+                  actionUrl: `/admin-orders/${orderRequest.id}`,
                   referenceId: orderRequest.id,
                   metadata: {
                     orderType,
@@ -696,7 +696,7 @@ export class OrderRequestService {
               type: 'ORDER_UPDATE',
               title: 'Order Status Updated',
               message: `Your order #${orderRequestId} for "${productName}" ${statusMessages[updateData.status] || 'has been updated'}.`,
-              actionUrl: `/orders/${orderRequestId}`,
+              actionUrl: `/admin-orders/${orderRequestId}`,
               referenceId: orderRequestId,
               metadata: {
                 oldStatus: existingOrder.status,
@@ -731,7 +731,7 @@ export class OrderRequestService {
                 'Order Updated by User',
                 `Order #${orderRequestId} for "${productName}" was updated by ${updatedOrder.user?.firstName} ${updatedOrder.user?.lastName}. Updated: ${updatedFields.join(', ')}.`,
                 {
-                  actionUrl: `/admin/orders/${orderRequestId}`,
+                  actionUrl: `/orders/${orderRequestId}`,
                   referenceId: orderRequestId,
                   metadata: {
                     userId: updatedOrder.userId,

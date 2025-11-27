@@ -165,7 +165,7 @@ export class ProductsController {
   ) {
     let newPhotoUrls: string[] = [];
 
-    // Handle image uploads if files are provided
+    // Handle multipart file uploads
     if (files && files.length > 0) {
       // Validate uploaded files
       this.uploadService.validateImageFiles(files);
@@ -177,11 +177,43 @@ export class ProductsController {
       );
       newPhotoUrls = uploadResults.map((result) => result.secure_url);
     }
+    
+    // Handle photos from request body (can be mixed URLs and base64)
+    if (updateProductDto.photos && updateProductDto.photos.length > 0) {
+      const processedPhotos: string[] = [];
+      
+      for (const photo of updateProductDto.photos) {
+        if (photo.startsWith('data:image/')) {
+          // It's a new base64 image - upload it
+          const result = await this.uploadService.uploadBase64Image(photo, 'products');
+          processedPhotos.push(result.secure_url);
+        } else {
+          // It's an existing URL - keep it
+          processedPhotos.push(photo);
+        }
+      }
+      
+      // If we processed photos from the body, we want to use this exact list
+      // This allows reordering, deleting (by omission), and adding mixed content
+      if (newPhotoUrls.length > 0) {
+        // If we also had multipart files, append them
+        newPhotoUrls = [...processedPhotos, ...newPhotoUrls];
+      } else {
+        newPhotoUrls = processedPhotos;
+      }
+      
+      // Force replacePhotos to true because we've constructed the complete desired state
+      updateProductDto.replacePhotos = true;
+    }
+
+    // Remove photos from DTO before passing to service
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { photos, ...productData } = updateProductDto;
 
     return this.productsService.update(
       id,
       user.id,
-      updateProductDto,
+      productData,
       newPhotoUrls,
     );
   }

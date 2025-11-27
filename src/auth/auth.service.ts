@@ -186,7 +186,7 @@ export class AuthService {
             'New User Registration',
             `New user ${userName} (${email}) has registered using referral code from ${referrer.firstName} ${referrer.lastName}.`,
             {
-              actionUrl: `/admin/users/${user.id}`,
+              actionUrl: `/admin-users/${user.id}`,
               referenceId: user.id,
               metadata: {
                 userId: user.id,
@@ -203,7 +203,7 @@ export class AuthService {
             type: 'SYSTEM',
             title: 'New Referral Signup',
             message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
-            actionUrl: `/referrals`,
+            actionUrl: `/referrals/${referrer.id}`,
             referenceId: user.id,
             metadata: {
               newUserId: user.id,

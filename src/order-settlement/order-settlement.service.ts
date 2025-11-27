@@ -301,7 +301,7 @@ export class OrderSettlementService {
       type: NotificationType.SETTLEMENT_UPDATE,
       title: 'Settlement Processed',
       message: `Your settlement for Order #${orderSettlement.orderRequestId} has been processed. You will receive ${formatAmount(netSellerAmount)}.`,
-      actionUrl: ``,
+      actionUrl: `/settlements/history`,
       referenceId: orderSettlement.id,
       metadata: {
         orderRequestId: orderSettlement.orderRequestId,
@@ -865,7 +865,7 @@ export class OrderSettlementService {
       type: NotificationType.SETTLEMENT_UPDATE,
       title: 'Settlement Processed',
       message: `Your settlement for Order #${result.orderRequestId} has been processed. You will receive ${formatAmount(netSellerAmount)}.`,
-      actionUrl: ``,
+      actionUrl: `/settlements`,
       referenceId: orderSettlementId,
       metadata: {
         orderRequestId: result.orderRequestId,
@@ -880,7 +880,7 @@ export class OrderSettlementService {
       type: NotificationType.SETTLEMENT_UPDATE,
       title: 'Commission Set Successfully',
       message: `You set a ${commissionRate}% commission rate for Order #${result.orderRequestId}. You will receive ${formatAmount(referralCommission)}.`,
-      actionUrl: ``,
+      actionUrl: `/settlements`,
       referenceId: orderSettlementId,
       metadata: {
         orderRequestId: result.orderRequestId,
