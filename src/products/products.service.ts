@@ -228,6 +228,14 @@ export class ProductsService {
     // Handle photo updates
     let finalPhotoUrls = existingProduct.photos;
 
+    // First, remove specified photos if any
+    if (updateProductDto.photosToRemove && updateProductDto.photosToRemove.length > 0) {
+      finalPhotoUrls = finalPhotoUrls.filter(
+        (photo) => !updateProductDto.photosToRemove!.includes(photo),
+      );
+    }
+
+    // Then, handle new photos
     if (newPhotoUrls.length > 0) {
       const replacePhotos = updateProductDto.replacePhotos === true;
 
@@ -235,13 +243,16 @@ export class ProductsService {
         finalPhotoUrls = newPhotoUrls;
       } else {
         // Add new photos to existing ones, but limit total to 10
-        const combinedPhotos = [...existingProduct.photos, ...newPhotoUrls];
+        const combinedPhotos = [...finalPhotoUrls, ...newPhotoUrls];
         finalPhotoUrls = combinedPhotos.slice(0, 10);
       }
     }
 
+    // Exclude replacePhotos and photosToRemove from updateData since they're not database fields
+    const { replacePhotos, photosToRemove, ...updateFields } = updateProductDto;
+
     const updateData: Record<string, any> = {
-      ...updateProductDto,
+      ...updateFields,
       photos: finalPhotoUrls,
     };
 
