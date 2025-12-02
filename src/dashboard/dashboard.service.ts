@@ -581,13 +581,12 @@ export class DashboardService {
       revenueGrowth: Number(revenueGrowth.toFixed(1)),
       commissionGrowth: Number(commissionGrowth.toFixed(1)),
       pendingSettlements,
-      activeSellers,
       successRate: Number(successRate.toFixed(1)),
     };
   }
 
   // Revenue Trend
-  async getRevenueTrend(months: number = 12) {
+  async getRevenueTrend(userId: number, userRole: string, months: number = 12) {
     const now = new Date();
     const startDate = new Date(
       now.getFullYear(),
@@ -595,9 +594,13 @@ export class DashboardService {
       1,
     );
 
+    // Build user filter
+    const userFilter = await this.buildUserFilter(userId, userRole);
+
     // Get all delivered orders from the start date
     const orders = await this.prisma.orderRequest.findMany({
       where: {
+        ...userFilter,
         status: 'DELIVERED',
         updatedAt: {
           gte: startDate,
@@ -612,8 +615,6 @@ export class DashboardService {
       },
     });
 
-    // Group by month and calculate revenue
-    const monthlyRevenue = new Map<string, number>();
     const monthNames = [
       'Jan',
       'Feb',
@@ -629,23 +630,51 @@ export class DashboardService {
       'Dec',
     ];
 
+    // Initialize all months in the range with 0
+    const monthlyRevenue = new Map<string, number>();
+    const currentDate = new Date(startDate);
+    
+    console.log('Revenue Trend Debug - Months requested:', months);
+    console.log('Revenue Trend Debug - Start date:', startDate);
+    
+    for (let i = 0; i < months; i++) {
+      const monthKey = `${monthNames[currentDate.getMonth()]}-${currentDate.getFullYear()}`;
+      console.log(`Revenue Trend Debug - Adding month ${i}:`, monthKey);
+      monthlyRevenue.set(monthKey, 0);
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+
+    console.log('Revenue Trend Debug - Total months initialized:', monthlyRevenue.size);
+
+    let totalEarnings = 0;
+
+    // Group by month and calculate revenue
     orders.forEach((order) => {
       const date = new Date(order.updatedAt);
-      const monthKey = monthNames[date.getMonth()];
+      const monthKey = `${monthNames[date.getMonth()]}-${date.getFullYear()}`;
       const currentRevenue = monthlyRevenue.get(monthKey) || 0;
-      monthlyRevenue.set(monthKey, currentRevenue + Number(order.decidedPrice));
+      const orderAmount = Number(order.decidedPrice);
+      monthlyRevenue.set(monthKey, currentRevenue + orderAmount);
+      totalEarnings += orderAmount;
     });
 
-    // Convert to array format
-    const data = Array.from(monthlyRevenue.entries()).map(([label, value]) => ({
-      label,
+    // Convert to array format and extract just the month name for label
+    const data = Array.from(monthlyRevenue.entries()).map(([key, value]) => ({
+      label: key.split('-')[0], // Extract month name from "Jan-2024"
       value: Number(value.toFixed(2)),
     }));
 
-    return { data };
-  }
+    console.log('Revenue Trend Debug - Final data:', JSON.stringify(data));
 
-  // Orders by Status
+    return { 
+      data,
+      totalEarnings: Number(totalEarnings.toFixed(2)),
+      debug: {
+        monthsRequested: months,
+        monthsGenerated: data.length
+      }
+    };
+  }
   async getOrdersByStatus() {
     const statusColors = {
       PENDING: '#F59E0B',

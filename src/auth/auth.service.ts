@@ -197,20 +197,23 @@ export class AuthService {
             },
           );
 
-          // 2. Notify the referrer about new signup
-          await this.notificationsService.createNotification({
-            userId: referrer.id,
-            type: 'SYSTEM',
-            title: 'New Referral Signup',
-            message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
-            actionUrl: `/referrals/${referrer.id}`,
-            referenceId: user.id,
-            metadata: {
-              newUserId: user.id,
-              newUserEmail: email,
-              newUserName: userName,
-            },
-          });
+          // 2. Notify the referrer about new signup (only if not an admin)
+          // Admins already receive notifications through the admin broadcast above
+          if (referrer.role !== 'ADMIN') {
+            await this.notificationsService.createNotification({
+              userId: referrer.id,
+              type: 'SYSTEM',
+              title: 'New Referral Signup',
+              message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
+              actionUrl: `/referrals/${referrer.id}`,
+              referenceId: user.id,
+              metadata: {
+                newUserId: user.id,
+                newUserEmail: email,
+                newUserName: userName,
+              },
+            });
+          }
 
           console.log(`Registration notifications sent for user ${user.id}`);
         } catch (error) {

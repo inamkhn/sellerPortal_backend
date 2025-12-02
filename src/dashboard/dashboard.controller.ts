@@ -78,8 +78,6 @@ export class DashboardController {
   }
 
   @Get('admin/revenue-trend')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
   @ApiOperation({
     summary: 'Get revenue trend data',
     description:
@@ -91,10 +89,16 @@ export class DashboardController {
     type: RevenueTrendDto,
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
-  async getRevenueTrend(@Query() query: RevenueTrendQueryDto) {
+  async getRevenueTrend(
+    @GetUser() user: User,
+    @Query() query: RevenueTrendQueryDto,
+  ) {
     const months = query.months || 12;
-    const data = await this.dashboardService.getRevenueTrend(months);
+    const data = await this.dashboardService.getRevenueTrend(
+      user.id,
+      user.role,
+      months,
+    );
 
     return {
       success: true,
