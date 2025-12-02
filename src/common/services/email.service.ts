@@ -40,7 +40,7 @@ export class EmailService {
 
       const fromEmail = this.configService.get<string>(
         'EMAIL_FROM',
-        'Furniture Marketplace <onboarding@resend.dev>',
+        'support@send.sellerspot.org',
       );
 
       const { data, error } = await this.resend.emails.send({
