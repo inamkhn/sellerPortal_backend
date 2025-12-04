@@ -20,6 +20,7 @@ import {
   ApiConflictResponse,
   ApiOkResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
@@ -214,6 +215,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // Only 3 resend attempts per minute
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

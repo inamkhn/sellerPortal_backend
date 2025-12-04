@@ -273,9 +273,16 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     const { email, password } = loginDto;
 
-    // Find user
+    // Find user with profile
     const user = await this.prisma.user.findUnique({
       where: { email },
+      include: {
+        profile: {
+          select: {
+            verified: true,
+          },
+        },
+      },
     });
 
     if (!user || !user.password) {
@@ -311,6 +318,9 @@ export class AuthService {
       },
       tokens: {
         accessToken,
+      },
+      profile: {
+        verified: user.profile?.verified ?? false,
       },
     };
   }

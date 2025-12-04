@@ -12,6 +12,9 @@ export interface AuthResponse {
   tokens: {
     accessToken: string;
   };
+  profile?: {
+    verified: boolean;
+  };
   referralInfo?: {
     wasReferred: boolean;
     referrerName?: string;
