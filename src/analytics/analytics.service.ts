@@ -784,66 +784,57 @@ export class AnalyticsService {
     userId: number,
     dateRange: DateRange,
   ): Promise<any> {
-    const { startDate, endDate, previousStartDate, previousEndDate } =
-      this.calculateDateRange(dateRange);
+    const { startDate, endDate } = this.calculateDateRange(dateRange);
 
     // Current period metrics
-    const [currentEarnings, activeReferrals, currentCommission] =
-      await Promise.all([
-        // Total earnings from settlements
-        this.prisma.settlement.aggregate({
-          where: {
-            userId,
-            settlementType: 'REFERRAL_PAYMENT',
-            status: { in: ['PAID', 'PENDING'] },
-            createdAt: { gte: startDate, lte: endDate },
-          },
-          _sum: { amount: true },
-        }),
-        // Active referrals count
-        this.prisma.profile.count({
-          where: {
-            referredBy: userId,
-            verified: true,
-          },
-        }),
-        // Total commission from order settlements
-        this.prisma.orderSettlement.aggregate({
-          where: {
-            referrerId: userId,
-            createdAt: { gte: startDate, lte: endDate },
-          },
-          _sum: { referralCommission: true },
-        }),
-      ]);
-
-    // Previous period metrics
-    const [previousEarnings, previousCommission] = await Promise.all([
+    const [
+      managerEarnings,
+      referralEarnings,
+      activeReferrals,
+      currentCommission,
+    ] = await Promise.all([
+      // Manager earnings from settlements (SELLER_PAYMENT)
+      this.prisma.settlement.aggregate({
+        where: {
+          userId,
+          settlementType: 'SELLER_PAYMENT',
+          status: { in: ['PAID', 'PENDING'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { amount: true },
+      }),
+      // Referral earnings from settlements (REFERRAL_PAYMENT)
       this.prisma.settlement.aggregate({
         where: {
           userId,
           settlementType: 'REFERRAL_PAYMENT',
           status: { in: ['PAID', 'PENDING'] },
-          createdAt: { gte: previousStartDate, lte: previousEndDate },
+          createdAt: { gte: startDate, lte: endDate },
         },
         _sum: { amount: true },
       }),
+      // Active referrals count
+      this.prisma.profile.count({
+        where: {
+          referredBy: userId,
+          verified: true,
+        },
+      }),
+      // Total commission from order settlements
       this.prisma.orderSettlement.aggregate({
         where: {
           referrerId: userId,
-          createdAt: { gte: previousStartDate, lte: previousEndDate },
+          createdAt: { gte: startDate, lte: endDate },
         },
         _sum: { referralCommission: true },
       }),
     ]);
 
-    const totalEarnings = Number(currentEarnings._sum.amount || 0);
-    const prevEarnings = Number(previousEarnings._sum.amount || 0);
+    const managerEarningsAmount = Number(managerEarnings._sum.amount || 0);
+    const referralEarningsAmount = Number(referralEarnings._sum.amount || 0);
+    const totalEarnings = managerEarningsAmount + referralEarningsAmount;
     const totalCommission = Number(
       currentCommission._sum.referralCommission || 0,
-    );
-    const prevCommission = Number(
-      previousCommission._sum.referralCommission || 0,
     );
     const avgCommissionPerReferral =
       activeReferrals > 0 ? totalCommission / activeReferrals : 0;
@@ -851,7 +842,7 @@ export class AnalyticsService {
     // Get charts data
     const [earningsOverTime, referralStatus, topReferredSellers] =
       await Promise.all([
-        this.getReferralManagerEarningsOverTime(
+        this.getReferralManagerCombinedEarningsOverTime(
           userId,
           startDate,
           endDate,
@@ -863,14 +854,11 @@ export class AnalyticsService {
 
     return {
       metrics: {
-        totalEarnings,
-        earningsGrowth: this.calculateGrowth(totalEarnings, prevEarnings),
+        totalEarnings: Number(totalEarnings.toFixed(2)),
         activeReferrals,
-        referralsGrowth: 0, // Can be calculated if we track historical data
-        totalCommission,
-        commissionGrowth: this.calculateGrowth(totalCommission, prevCommission),
+        totalCommission: Number(totalCommission.toFixed(2)),
         avgCommissionPerReferral: Number(avgCommissionPerReferral.toFixed(2)),
-        avgGrowth: 0,
+        referralEarnings: Number(referralEarningsAmount.toFixed(2)),
       },
       charts: {
         earningsOverTime,
@@ -894,7 +882,13 @@ export class AnalyticsService {
     ];
 
     // Current period metrics
-    const [currentRevenue, currentOrders, completedOrders] = await Promise.all([
+    const [
+      currentRevenue,
+      currentOrders,
+      completedOrders,
+      sellerEarnings,
+      referralEarnings,
+    ] = await Promise.all([
       // Total revenue
       this.prisma.orderRequest.aggregate({
         where: {
@@ -919,46 +913,66 @@ export class AnalyticsService {
           createdAt: { gte: startDate, lte: endDate },
         },
       }),
+      // Seller earnings from settlements (SELLER_PAYMENT)
+      this.prisma.settlement.aggregate({
+        where: {
+          userId,
+          settlementType: 'SELLER_PAYMENT',
+          status: { in: ['PAID', 'PENDING'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { amount: true },
+      }),
+      // Referral earnings from settlements (REFERRAL_PAYMENT)
+      this.prisma.settlement.aggregate({
+        where: {
+          userId,
+          settlementType: 'REFERRAL_PAYMENT',
+          status: { in: ['PAID', 'PENDING'] },
+          createdAt: { gte: startDate, lte: endDate },
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
-    // Previous period metrics
-    const [previousRevenue, previousOrders, previousCompleted] =
+    // Previous period metrics (only for earnings growth)
+    const [previousSellerEarnings, previousReferralEarnings] =
       await Promise.all([
-        this.prisma.orderRequest.aggregate({
+        this.prisma.settlement.aggregate({
           where: {
             userId,
-            status: { in: deliveredStatuses },
+            settlementType: 'SELLER_PAYMENT',
+            status: { in: ['PAID', 'PENDING'] },
             createdAt: { gte: previousStartDate, lte: previousEndDate },
           },
-          _sum: { decidedPrice: true },
+          _sum: { amount: true },
         }),
-        this.prisma.orderRequest.count({
+        this.prisma.settlement.aggregate({
           where: {
             userId,
+            settlementType: 'REFERRAL_PAYMENT',
+            status: { in: ['PAID', 'PENDING'] },
             createdAt: { gte: previousStartDate, lte: previousEndDate },
           },
-        }),
-        this.prisma.orderRequest.count({
-          where: {
-            userId,
-            status: { in: deliveredStatuses },
-            createdAt: { gte: previousStartDate, lte: previousEndDate },
-          },
+          _sum: { amount: true },
         }),
       ]);
 
     const totalRevenue = Number(currentRevenue._sum.decidedPrice || 0);
-    const prevRevenue = Number(previousRevenue._sum.decidedPrice || 0);
     const totalOrders = currentOrders;
-    const prevOrders = previousOrders;
     const avgOrderValue =
       completedOrders > 0 ? totalRevenue / completedOrders : 0;
-    const prevAvgOrderValue =
-      previousCompleted > 0 ? prevRevenue / previousCompleted : 0;
+
+    const userSellerEarnings = Number(sellerEarnings._sum.amount || 0);
+    const prevSellerEarnings = Number(previousSellerEarnings._sum.amount || 0);
+    const userReferralEarnings = Number(referralEarnings._sum.amount || 0);
+    const prevReferralEarnings = Number(
+      previousReferralEarnings._sum.amount || 0,
+    );
 
     // Get charts data
     const [revenueOverTime, ordersByStatus, topProducts] = await Promise.all([
-      this.getSellerRevenueOverTime(userId, startDate, endDate, dateRange),
+      this.getSellerSettlementsOverTime(userId, startDate, endDate, dateRange),
       this.getSellerOrdersByStatus(userId, startDate, endDate),
       this.getSellerTopProducts(userId, startDate, endDate, 5),
     ]);
@@ -966,16 +980,19 @@ export class AnalyticsService {
     return {
       metrics: {
         totalRevenue,
-        revenueGrowth: this.calculateGrowth(totalRevenue, prevRevenue),
         totalOrders,
-        ordersGrowth: this.calculateGrowth(totalOrders, prevOrders),
         completedOrders,
-        completionGrowth: this.calculateGrowth(
-          completedOrders,
-          previousCompleted,
-        ),
         avgOrderValue: Number(avgOrderValue.toFixed(2)),
-        avgGrowth: this.calculateGrowth(avgOrderValue, prevAvgOrderValue),
+        sellerEarnings: Number(userSellerEarnings.toFixed(2)),
+        sellerEarningsGrowth: this.calculateGrowth(
+          userSellerEarnings,
+          prevSellerEarnings,
+        ),
+        referralEarnings: Number(userReferralEarnings.toFixed(2)),
+        referralEarningsGrowth: this.calculateGrowth(
+          userReferralEarnings,
+          prevReferralEarnings,
+        ),
       },
       charts: {
         revenueOverTime,
@@ -996,6 +1013,35 @@ export class AnalyticsService {
       where: {
         userId,
         settlementType: 'REFERRAL_PAYMENT',
+        status: { in: ['PAID', 'PENDING'] },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(
+      earnings.map((e) => ({
+        decidedPrice: e.amount,
+        createdAt: e.createdAt,
+      })),
+      dateRange,
+    );
+  }
+
+  // Referral manager combined earnings over time (manager + referral)
+  private async getReferralManagerCombinedEarningsOverTime(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const earnings = await this.prisma.settlement.findMany({
+      where: {
+        userId,
+        settlementType: { in: ['SELLER_PAYMENT', 'REFERRAL_PAYMENT'] },
         status: { in: ['PAID', 'PENDING'] },
         createdAt: { gte: startDate, lte: endDate },
       },
@@ -1120,6 +1166,35 @@ export class AnalyticsService {
     });
 
     return this.groupByPeriod(orders, dateRange);
+  }
+
+  // Seller settlements over time (month-wise)
+  private async getSellerSettlementsOverTime(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const settlements = await this.prisma.settlement.findMany({
+      where: {
+        userId,
+        settlementType: { in: ['SELLER_PAYMENT', 'REFERRAL_PAYMENT'] },
+        status: { in: ['PAID', 'PENDING'] },
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    return this.groupByPeriod(
+      settlements.map((s) => ({
+        decidedPrice: s.amount,
+        createdAt: s.createdAt,
+      })),
+      dateRange,
+    );
   }
 
   // Seller orders by status

@@ -58,8 +58,15 @@ export class UsersService {
       }),
     };
 
-    // Fetch users and total count in parallel
-    const [users, total] = await Promise.all([
+    // Fetch users, total count, and role counts in parallel
+    const [
+      users,
+      total,
+      usersCount,
+      referralManagersCount,
+      adminsCount,
+      pendingCount,
+    ] = await Promise.all([
       this.prisma.user.findMany({
         where,
         include: {
@@ -82,6 +89,34 @@ export class UsersService {
         orderBy: { [sortBy]: sortOrder },
       }),
       this.prisma.user.count({ where }),
+      // Count users with role USER
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'USER',
+        },
+      }),
+      // Count users with role REFERRAL_MANAGER
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'REFERRAL_MANAGER',
+        },
+      }),
+      // Count users with role ADMIN
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'ADMIN',
+        },
+      }),
+      // Count pending (unverified) users
+      this.prisma.user.count({
+        where: {
+          ...where,
+          isVerified: false,
+        },
+      }),
     ]);
 
     // Calculate revenue for each user
@@ -128,6 +163,13 @@ export class UsersService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      roleCounts: {
+        all: total,
+        users: usersCount,
+        referralManagers: referralManagersCount,
+        admins: adminsCount,
+        pending: pendingCount,
+      },
     };
   }
 

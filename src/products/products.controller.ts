@@ -177,22 +177,25 @@ export class ProductsController {
       );
       newPhotoUrls = uploadResults.map((result) => result.secure_url);
     }
-    
+
     // Handle photos from request body (can be mixed URLs and base64)
     if (updateProductDto.photos && updateProductDto.photos.length > 0) {
       const processedPhotos: string[] = [];
-      
+
       for (const photo of updateProductDto.photos) {
         if (photo.startsWith('data:image/')) {
           // It's a new base64 image - upload it
-          const result = await this.uploadService.uploadBase64Image(photo, 'products');
+          const result = await this.uploadService.uploadBase64Image(
+            photo,
+            'products',
+          );
           processedPhotos.push(result.secure_url);
         } else {
           // It's an existing URL - keep it
           processedPhotos.push(photo);
         }
       }
-      
+
       // If we processed photos from the body, we want to use this exact list
       // This allows reordering, deleting (by omission), and adding mixed content
       if (newPhotoUrls.length > 0) {
@@ -201,7 +204,7 @@ export class ProductsController {
       } else {
         newPhotoUrls = processedPhotos;
       }
-      
+
       // Force replacePhotos to true because we've constructed the complete desired state
       updateProductDto.replacePhotos = true;
     }
@@ -210,12 +213,7 @@ export class ProductsController {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { photos, ...productData } = updateProductDto;
 
-    return this.productsService.update(
-      id,
-      user.id,
-      productData,
-      newPhotoUrls,
-    );
+    return this.productsService.update(id, user.id, productData, newPhotoUrls);
   }
 
   @Delete(':id')

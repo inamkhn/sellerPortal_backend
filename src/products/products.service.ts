@@ -229,7 +229,10 @@ export class ProductsService {
     let finalPhotoUrls = existingProduct.photos;
 
     // First, remove specified photos if any
-    if (updateProductDto.photosToRemove && updateProductDto.photosToRemove.length > 0) {
+    if (
+      updateProductDto.photosToRemove &&
+      updateProductDto.photosToRemove.length > 0
+    ) {
       finalPhotoUrls = finalPhotoUrls.filter(
         (photo) => !updateProductDto.photosToRemove!.includes(photo),
       );

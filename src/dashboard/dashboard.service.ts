@@ -415,7 +415,6 @@ export class DashboardService {
       lastMonthCommission,
       twoMonthsAgoCommission,
       pendingSettlements,
-      activeSellers,
       deliveredOrders,
       totalOrders,
     ] = await Promise.all([
@@ -633,10 +632,10 @@ export class DashboardService {
     // Initialize all months in the range with 0
     const monthlyRevenue = new Map<string, number>();
     const currentDate = new Date(startDate);
-    
+
     console.log('Revenue Trend Debug - Months requested:', months);
     console.log('Revenue Trend Debug - Start date:', startDate);
-    
+
     for (let i = 0; i < months; i++) {
       const monthKey = `${monthNames[currentDate.getMonth()]}-${currentDate.getFullYear()}`;
       console.log(`Revenue Trend Debug - Adding month ${i}:`, monthKey);
@@ -644,7 +643,10 @@ export class DashboardService {
       currentDate.setMonth(currentDate.getMonth() + 1);
     }
 
-    console.log('Revenue Trend Debug - Total months initialized:', monthlyRevenue.size);
+    console.log(
+      'Revenue Trend Debug - Total months initialized:',
+      monthlyRevenue.size,
+    );
 
     let totalEarnings = 0;
 
@@ -666,13 +668,13 @@ export class DashboardService {
 
     console.log('Revenue Trend Debug - Final data:', JSON.stringify(data));
 
-    return { 
+    return {
       data,
       totalEarnings: Number(totalEarnings.toFixed(2)),
       debug: {
         monthsRequested: months,
-        monthsGenerated: data.length
-      }
+        monthsGenerated: data.length,
+      },
     };
   }
   async getOrdersByStatus() {

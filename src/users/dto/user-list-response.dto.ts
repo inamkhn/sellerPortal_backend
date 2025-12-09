@@ -16,10 +16,19 @@ export class UserListItemDto {
   totalRevenue: number;
 }
 
+export class RoleCounts {
+  all: number;
+  users: number;
+  referralManagers: number;
+  admins: number;
+  pending: number;
+}
+
 export class UserListResponseDto {
   users: UserListItemDto[];
   total: number;
   page: number;
   limit: number;
   totalPages: number;
+  roleCounts: RoleCounts;
 }

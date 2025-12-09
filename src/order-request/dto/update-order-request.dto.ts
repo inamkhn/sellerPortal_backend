@@ -52,8 +52,11 @@ export class UpdateOrderRequestDto {
     required: false,
   })
   @IsOptional()
+  @Transform(({ value }: { value: string }) => {
+    if (!value || value.trim() === '') return undefined;
+    return value.trim().toLowerCase();
+  })
   @IsEmail({}, { message: 'Invalid email format' })
-  @Transform(({ value }: { value: string }) => value?.trim().toLowerCase())
   customerEmail?: string;
 
   @ApiProperty({

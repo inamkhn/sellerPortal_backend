@@ -81,10 +81,15 @@ export class CreateOrderRequestDto {
 
   @ApiProperty({
     example: 'ahmed@example.com',
+    required: false,
   })
+  @Transform(({ value }: { value: string }) => {
+    if (!value || value.trim() === '') return undefined;
+    return value.trim().toLowerCase();
+  })
+  @IsOptional()
   @IsEmail({}, { message: 'Invalid email format' })
-  @Transform(({ value }: { value: string }) => value?.trim().toLowerCase())
-  customerEmail: string;
+  customerEmail?: string;
 
   @ApiProperty({
     example: 'Customer prefers morning delivery',

@@ -101,7 +101,7 @@ export class OrderRequestService {
             customerName: createOrderRequestDto.customerName,
             customerPhone: createOrderRequestDto.customerPhone,
             customerWhatsapp: createOrderRequestDto.customerWhatsapp,
-            customerEmail: createOrderRequestDto.customerEmail,
+            customerEmail: createOrderRequestDto.customerEmail || '',
             customerNotes: createOrderRequestDto.customerNotes || null,
             deliveryAddress: createOrderRequestDto.deliveryAddress || null,
             deliveryDate: createOrderRequestDto.deliveryDate

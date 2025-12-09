@@ -33,16 +33,12 @@ export class UpdateProfileDto {
   address?: string;
 
   @ApiProperty({
-    description: 'WhatsApp number with country code',
-    example: '+923009876543',
+    description: 'WhatsApp number',
+    example: '03009876543',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\+[1-9]\d{1,14}$/, {
-    message:
-      'WhatsApp number must be in international format (e.g., +923001234567)',
-  })
   whatsappNumber?: string;
 
   @ApiProperty({
@@ -74,9 +70,6 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^(https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+)?$/, {
-    message: 'Please provide a valid Facebook profile URL or leave empty',
-  })
   facebookLink?: string;
 
   @ApiProperty({
@@ -86,9 +79,6 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^(https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+)?$/, {
-    message: 'Please provide a valid Dubizzle profile URL or leave empty',
-  })
   dubizzleLink?: string;
 
   @ApiProperty({

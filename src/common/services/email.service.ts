@@ -142,8 +142,6 @@ export class EmailService {
     token: string,
     userName?: string,
   ): Promise<void> {
-    const resetUrl = `${this.configService.get('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token=${token}`;
-
     const html = `
       <!DOCTYPE html>
       <html>
@@ -155,14 +153,16 @@ export class EmailService {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
             .header { background-color: #dc3545; color: white; padding: 20px; text-align: center; }
             .content { padding: 20px; background-color: #f9f9f9; }
-            .button { 
-              display: inline-block; 
-              padding: 12px 24px; 
-              background-color: #dc3545; 
-              color: white; 
-              text-decoration: none; 
-              border-radius: 5px; 
+            .token { 
+              background-color: #e9ecef; 
+              padding: 15px; 
+              border-radius: 6px; 
+              font-family: monospace; 
+              word-break: break-all; 
               margin: 20px 0; 
+              text-align: center;
+              font-size: 18px;
+              letter-spacing: 1px;
             }
             .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
             .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 15px 0; }
@@ -175,16 +175,12 @@ export class EmailService {
             </div>
             <div class="content">
               <p>Hello${userName ? ` ${userName}` : ''},</p>
-              <p>We received a request to reset your password for your Furniture Marketplace account. Click the button below to reset your password:</p>
-              <div style="text-align: center;">
-                <a href="${resetUrl}" class="button">Reset Password</a>
-              </div>
-              <p>If the button doesn't work, you can also copy and paste this link into your browser:</p>
-              <p style="word-break: break-all; color: #dc3545;">${resetUrl}</p>
+              <p>We received a request to reset your password for your Furniture Marketplace account. Please use the OTP code below to reset your password:</p>
+              <div class="token">${token}</div>
               <div class="warning">
                 <p><strong>⚠️ Security Notice:</strong></p>
                 <ul>
-                  <li>This password reset link will expire in 1 hour</li>
+                  <li>This OTP code will expire in 1 hour</li>
                   <li>If you didn't request this password reset, please ignore this email</li>
                   <li>Your password will remain unchanged until you create a new one</li>
                 </ul>
@@ -201,11 +197,11 @@ export class EmailService {
     const text = `
       Hello${userName ? ` ${userName}` : ''},
       
-      We received a request to reset your password for your Furniture Marketplace account. Visit this link to reset your password:
+      We received a request to reset your password for your Furniture Marketplace account. Please use the OTP code below to reset your password:
       
-      ${resetUrl}
+      ${token}
       
-      This password reset link will expire in 1 hour.
+      This OTP code will expire in 1 hour.
       
       If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
       

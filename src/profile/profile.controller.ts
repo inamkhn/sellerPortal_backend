@@ -263,8 +263,8 @@ export class ProfileController {
       example: {
         statusCode: 400,
         message: [
-          'WhatsApp number must be in international format',
-          'Please provide a valid Facebook profile URL',
+          'Full name must be between 2 and 100 characters',
+          'Address must be between 5 and 500 characters',
           'Referrer user not found',
           'Cannot refer yourself',
           'Each listed product must be a string',
