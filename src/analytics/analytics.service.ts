@@ -17,7 +17,7 @@ import { OrderStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // Calculate date ranges based on selection
   private calculateDateRange(dateRange: DateRange): DateRangeResult {
@@ -248,7 +248,7 @@ export class AnalyticsService {
       } else if (dateRange === DateRange.NINETY_DAYS) {
         const weekNum = Math.floor(
           (date.getTime() - orders[0].createdAt.getTime()) /
-            (7 * 24 * 60 * 60 * 1000),
+          (7 * 24 * 60 * 60 * 1000),
         );
         key = `Week ${weekNum + 1}`;
       } else {
@@ -593,7 +593,7 @@ export class AnalyticsService {
       },
     });
 
-    // Get sellers with their orders
+    // Get sellers with their orders and settlements
     const sellers = await this.prisma.user.findMany({
       where: {
         orderRequests: {
@@ -618,11 +618,14 @@ export class AnalyticsService {
           },
           select: {
             decidedPrice: true,
-            orderSettlements: {
-              select: {
-                adminCommission: true,
-              },
-            },
+          },
+        },
+        settlements: {
+          where: {
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          select: {
+            amount: true,
           },
         },
       },
@@ -637,9 +640,8 @@ export class AnalyticsService {
         (sum, order) => sum + Number(order.decidedPrice),
         0,
       );
-      const commission = seller.orderRequests.reduce(
-        (sum, order) =>
-          sum + Number(order.orderSettlements[0]?.adminCommission || 0),
+      const commission = seller.settlements.reduce(
+        (sum, settlement) => sum + Number(settlement.amount),
         0,
       );
 
