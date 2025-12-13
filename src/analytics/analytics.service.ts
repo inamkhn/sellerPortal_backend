@@ -245,10 +245,15 @@ export class AnalyticsService {
 
       if (dateRange === DateRange.TWELVE_MONTHS) {
         key = date.toLocaleString('default', { month: 'short' });
+      } else if (dateRange === DateRange.ALL_TIME) {
+        key = date.toLocaleString('default', {
+          month: 'short',
+          year: 'numeric',
+        });
       } else if (dateRange === DateRange.NINETY_DAYS) {
         const weekNum = Math.floor(
           (date.getTime() - orders[0].createdAt.getTime()) /
-          (7 * 24 * 60 * 60 * 1000),
+            (7 * 24 * 60 * 60 * 1000),
         );
         key = `Week ${weekNum + 1}`;
       } else {
@@ -405,6 +410,7 @@ export class AnalyticsService {
       where: {
         status: { in: deliveredStatuses },
         createdAt: { gte: startDate, lte: endDate },
+        user: { role: { not: Role.ADMIN } },
       },
       _sum: { decidedPrice: true },
       orderBy: { _sum: { decidedPrice: 'desc' } },
@@ -584,6 +590,7 @@ export class AnalyticsService {
     // Get total count
     const totalSellers = await this.prisma.user.count({
       where: {
+        role: { not: Role.ADMIN },
         orderRequests: {
           some: {
             status: { in: deliveredStatuses },
@@ -596,6 +603,7 @@ export class AnalyticsService {
     // Get sellers with their orders and settlements
     const sellers = await this.prisma.user.findMany({
       where: {
+        role: { not: Role.ADMIN },
         orderRequests: {
           some: {
             status: { in: deliveredStatuses },

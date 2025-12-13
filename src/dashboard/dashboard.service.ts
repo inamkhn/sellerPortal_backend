@@ -48,7 +48,10 @@ export class DashboardService {
 
       // Pending orders
       this.prisma.orderRequest.count({
-        where: { ...whereClause, status: 'PENDING' },
+        where: {
+          ...whereClause,
+          status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
+        },
       }),
 
       // Completed orders (DELIVERED + PARTIALLY_DELIVERED)
@@ -462,7 +465,7 @@ export class DashboardService {
 
       // Pending orders
       this.prisma.orderRequest.count({
-        where: { status: 'PENDING' },
+        where: { status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] } },
       }),
 
       // Orders today
@@ -633,21 +636,12 @@ export class DashboardService {
     const monthlyRevenue = new Map<string, number>();
     const currentDate = new Date(startDate);
 
-    console.log('Revenue Trend Debug - Months requested:', months);
-    console.log('Revenue Trend Debug - Start date:', startDate);
-
     for (let i = 0; i < months; i++) {
       const monthKey = `${monthNames[currentDate.getMonth()]}-${currentDate.getFullYear()}`;
       console.log(`Revenue Trend Debug - Adding month ${i}:`, monthKey);
       monthlyRevenue.set(monthKey, 0);
       currentDate.setMonth(currentDate.getMonth() + 1);
     }
-
-    console.log(
-      'Revenue Trend Debug - Total months initialized:',
-      monthlyRevenue.size,
-    );
-
     let totalEarnings = 0;
 
     // Group by month and calculate revenue
@@ -665,8 +659,6 @@ export class DashboardService {
       label: key.split('-')[0], // Extract month name from "Jan-2024"
       value: Number(value.toFixed(2)),
     }));
-
-    console.log('Revenue Trend Debug - Final data:', JSON.stringify(data));
 
     return {
       data,
