@@ -17,7 +17,7 @@ import { OrderStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // Calculate date ranges based on selection
   private calculateDateRange(dateRange: DateRange): DateRangeResult {

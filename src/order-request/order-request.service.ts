@@ -11,6 +11,7 @@ import { UpdateOrderRequestDto } from './dto/update-order-request.dto';
 import { Prisma, OrderStatus } from '@prisma/client';
 import { OrderRequestQueryDto } from './dto/order-request-query.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../common/services/email.service';
 
 @Injectable()
 export class OrderRequestService {
@@ -19,6 +20,7 @@ export class OrderRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly emailService: EmailService,
   ) {}
 
   async create(
@@ -708,6 +710,11 @@ export class OrderRequestService {
             this.logger.log(
               `Status change notification sent for order ${orderRequestId}`,
             );
+
+            // Send delivery email notifications if status changed to DELIVERED
+            if (updateData.status === OrderStatus.DELIVERED) {
+              await this.notifyOrderDelivery(updatedOrder);
+            }
           }
 
           // 2. If user updated order details, notify admins
@@ -801,5 +808,125 @@ export class OrderRequestService {
     });
 
     return;
+  }
+
+  /**
+   * Notify users when order is delivered
+   */
+  private async notifyOrderDelivery(order: {
+    id: number;
+    userId: number;
+    decidedPrice: any;
+    product?: { title: string } | null;
+    customProducts?: { name: string }[] | null;
+  }) {
+    try {
+      // Get order user with referral manager details
+      const orderUser = await this.prisma.user.findUnique({
+        where: { id: order.userId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          role: true,
+          profile: {
+            select: {
+              fullName: true,
+              referredBy: true,
+              referrer: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  role: true,
+                  profile: {
+                    select: {
+                      fullName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!orderUser) return;
+
+      // Generate product name for email
+      const productName =
+        order.product?.title ||
+        order.customProducts?.[0]?.name ||
+        `${order.customProducts?.length || 0} Custom Products` ||
+        'Order';
+
+      const customerName =
+        orderUser.profile?.fullName ||
+        `${orderUser.firstName || ''} ${orderUser.lastName || ''}`.trim() ||
+        orderUser.email;
+
+      // 1. Send email to order user (exclude admins)
+      if (orderUser.role !== 'ADMIN') {
+        try {
+          await this.emailService.sendOrderDeliveryEmail(
+            orderUser.email,
+            customerName,
+            order.id,
+            productName,
+            Number(order.decidedPrice),
+            customerName,
+            false, // isReferralManager = false
+          );
+
+          this.logger.log(
+            `Delivery email sent to customer for order ${order.id}`,
+          );
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send delivery email to customer for order ${order.id}:`,
+            emailError,
+          );
+        }
+      }
+
+      // 2. Send email to referral manager (if exists and not admin)
+      if (
+        orderUser.profile?.referrer &&
+        orderUser.profile.referrer.role !== 'ADMIN'
+      ) {
+        try {
+          const referralManagerName =
+            orderUser.profile.referrer.profile?.fullName ||
+            `${orderUser.profile.referrer.firstName || ''} ${orderUser.profile.referrer.lastName || ''}`.trim() ||
+            orderUser.profile.referrer.email;
+
+          await this.emailService.sendOrderDeliveryEmail(
+            orderUser.profile.referrer.email,
+            referralManagerName,
+            order.id,
+            productName,
+            Number(order.decidedPrice),
+            customerName,
+            true, // isReferralManager = true
+          );
+
+          this.logger.log(
+            `Delivery email sent to referral manager for order ${order.id}`,
+          );
+        } catch (emailError) {
+          this.logger.error(
+            `Failed to send delivery email to referral manager for order ${order.id}:`,
+            emailError,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to send delivery notifications for order ${order.id}:`,
+        error,
+      );
+    }
   }
 }

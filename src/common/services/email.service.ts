@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { SettlementType } from '@prisma/client';
 
 export interface EmailOptions {
   to: string;
@@ -108,7 +109,7 @@ export class EmailService {
               <p>If you didn't create an account with us, please ignore this email.</p>
             </div>
             <div class="footer">
-              <p>© 2024 Furniture Marketplace. All rights reserved.</p>
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -126,7 +127,7 @@ export class EmailService {
       
       If you didn't create an account with us, please ignore this email.
       
-      © 2024 Furniture Marketplace. All rights reserved.
+      © 2025 Furniture Marketplace. All rights reserved.
     `;
 
     await this.sendEmail({
@@ -187,7 +188,7 @@ export class EmailService {
               </div>
             </div>
             <div class="footer">
-              <p>© 2024 Furniture Marketplace. All rights reserved.</p>
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -205,7 +206,7 @@ export class EmailService {
       
       If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
       
-      © 2024 Furniture Marketplace. All rights reserved.
+      © 2025 Furniture Marketplace. All rights reserved.
     `;
 
     await this.sendEmail({
@@ -250,7 +251,7 @@ export class EmailService {
               <p>For security reasons, all active sessions have been logged out. You'll need to log in again with your new password.</p>
             </div>
             <div class="footer">
-              <p>© 2024 Furniture Marketplace. All rights reserved.</p>
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
             </div>
           </div>
         </body>
@@ -268,12 +269,286 @@ export class EmailService {
       
       For security reasons, all active sessions have been logged out. You'll need to log in again with your new password.
       
-      © 2024 Furniture Marketplace. All rights reserved.
+      © 2025 Furniture Marketplace. All rights reserved.
     `;
 
     await this.sendEmail({
       to: email,
       subject: 'Password Reset Successful - Furniture Marketplace',
+      html,
+      text,
+    });
+  }
+
+  async sendSettlementPaymentEmail(
+    email: string,
+    userName: string,
+    amount: number,
+    settlementType: SettlementType,
+    settlementId: number,
+  ): Promise<void> {
+    // Settlement type-specific configuration
+    const settlementConfig = {
+      [SettlementType.SELLER_PAYMENT]: {
+        subject: 'Seller Payment Received - Furniture Marketplace',
+        title: 'Seller Payment Received',
+        description:
+          'Your seller payment has been processed and marked as paid.',
+        icon: '💰',
+      },
+      [SettlementType.REFERRAL_PAYMENT]: {
+        subject: 'Referral Commission Received - Furniture Marketplace',
+        title: 'Referral Commission Received',
+        description:
+          'Your referral commission has been processed and marked as paid.',
+        icon: '🎯',
+      },
+      [SettlementType.ADMIN_COMMISSION]: {
+        subject: 'Commission Payment Received - Furniture Marketplace',
+        title: 'Commission Payment Received',
+        description:
+          'Your commission payment has been processed and marked as paid.',
+        icon: '💼',
+      },
+    };
+
+    const config = settlementConfig[settlementType];
+    const formattedAmount = `AED ${Number(amount).toFixed(2)}`;
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${config.title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .payment-details { 
+              background-color: #e9ecef; 
+              padding: 20px; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+              border-left: 4px solid #28a745;
+            }
+            .amount { 
+              font-size: 24px; 
+              font-weight: bold; 
+              color: #28a745; 
+              text-align: center;
+              margin: 10px 0;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+            .success { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${config.icon} ${config.title}</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${userName},</p>
+              <div class="success">
+                <p><strong>Great news! Your payment has been processed successfully.</strong></p>
+              </div>
+              <p>${config.description}</p>
+              
+              <div class="payment-details">
+                <h3>Payment Details:</h3>
+                <p><strong>Amount:</strong></p>
+                <div class="amount">${formattedAmount}</div>
+                <p><strong>Payment Type:</strong> ${settlementType
+                  .replace('_', ' ')
+                  .toLowerCase()
+                  .replace(/\b\w/g, (l) => l.toUpperCase())}</p>
+                <p><strong>Settlement ID:</strong> #${settlementId}</p>
+                <p><strong>Payment Date:</strong> ${currentDate}</p>
+              </div>
+              
+              <p>The payment has been processed and should reflect in your account according to your bank's processing times.</p>
+              <p>If you have any questions about this payment, please contact our support team.</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Hello ${userName},
+      
+      Great news! Your payment has been processed successfully.
+      
+      ${config.description}
+      
+      Payment Details:
+      - Amount: ${formattedAmount}
+      - Payment Type: ${settlementType
+        .replace('_', ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (l) => l.toUpperCase())}
+      - Settlement ID: #${settlementId}
+      - Payment Date: ${currentDate}
+      
+      The payment has been processed and should reflect in your account according to your bank's processing times.
+      
+      If you have any questions about this payment, please contact our support team.
+      
+      © 2025 Furniture Marketplace. All rights reserved.
+      This is an automated notification. Please do not reply to this email.
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject: config.subject,
+      html,
+      text,
+    });
+  }
+
+  async sendOrderDeliveryEmail(
+    email: string,
+    userName: string,
+    orderId: number,
+    productName: string,
+    orderAmount: number,
+    customerName: string,
+    isReferralManager: boolean = false,
+  ): Promise<void> {
+    const formattedAmount = `AED ${Number(orderAmount).toFixed(2)}`;
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const config = isReferralManager
+      ? {
+          subject:
+            'Order Delivered - Referral Customer - Furniture Marketplace',
+          title: 'Order Delivered - Referral Customer',
+          description: `Great news! An order from your referral customer has been successfully delivered.`,
+          icon: '🎯',
+          recipientType: 'Referral Manager',
+        }
+      : {
+          subject: 'Order Delivered Successfully - Furniture Marketplace',
+          title: 'Order Delivered Successfully',
+          description: 'Your order has been delivered successfully!',
+          icon: '📦',
+          recipientType: 'Customer',
+        };
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${config.title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .order-details { 
+              background-color: #e9ecef; 
+              padding: 20px; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+              border-left: 4px solid #28a745;
+            }
+            .amount { 
+              font-size: 20px; 
+              font-weight: bold; 
+              color: #28a745; 
+              margin: 5px 0;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+            .success { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>${config.icon} ${config.title}</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${userName},</p>
+              <div class="success">
+                <p><strong>Excellent news! ${config.description}</strong></p>
+              </div>
+              
+              <div class="order-details">
+                <h3>Order Details:</h3>
+                <p><strong>Order ID:</strong> #${orderId}</p>
+                <p><strong>Product:</strong> ${productName}</p>
+                ${isReferralManager ? `<p><strong>Customer:</strong> ${customerName}</p>` : ''}
+                <p><strong>Order Amount:</strong></p>
+                <div class="amount">${formattedAmount}</div>
+                <p><strong>Delivery Date:</strong> ${currentDate}</p>
+                <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">DELIVERED ✅</span></p>
+              </div>
+              
+              ${
+                isReferralManager
+                  ? `<p>This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.</p>`
+                  : `<p>Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.</p>`
+              }
+              
+              <p>If you have any questions about this ${
+                isReferralManager ? 'referral order' : 'order'
+              }, please contact our support team.</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Hello ${userName},
+      
+      Excellent news! ${config.description}
+      
+      Order Details:
+      - Order ID: #${orderId}
+      - Product: ${productName}
+      ${isReferralManager ? `- Customer: ${customerName}` : ''}
+      - Order Amount: ${formattedAmount}
+      - Delivery Date: ${currentDate}
+      - Status: DELIVERED ✅
+      
+      ${
+        isReferralManager
+          ? `This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.`
+          : `Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.`
+      }
+      
+      If you have any questions about this ${
+        isReferralManager ? 'referral order' : 'order'
+      }, please contact our support team.
+      
+      © 2025 Furniture Marketplace. All rights reserved.
+      This is an automated notification. Please do not reply to this email.
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject: config.subject,
       html,
       text,
     });

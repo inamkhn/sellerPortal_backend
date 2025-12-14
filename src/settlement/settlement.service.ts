@@ -2,10 +2,14 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
 import { SettlementQueryDto } from './dto';
 import { Prisma, SettlementStatus, SettlementType } from '@prisma/client';
+import { EmailService } from '../common/services/email.service';
 
 @Injectable()
 export class SettlementService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+  ) {}
 
   // ============== PAYOUT REQUEST HELPERS ==============
 
@@ -475,7 +479,6 @@ export class SettlementService {
       }
     }
     // Admin can create settlements for anyone (no additional check needed)
-
     return this.prisma.settlement.create({
       data: {
         orderSettlementId,
@@ -666,7 +669,7 @@ export class SettlementService {
         actionUrl = '/admin-settlement';
       }
 
-      // Create notification for the user
+      // Create in-app notification for the user
       await this.prisma.notification.create({
         data: {
           userId: recipientUserId,
@@ -682,6 +685,27 @@ export class SettlementService {
           },
         },
       });
+
+      // Send email notification only for non-admin users
+      if (user.role !== 'ADMIN') {
+        try {
+          const userName =
+            user.profile?.fullName ||
+            `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+            user.email;
+
+          await this.emailService.sendSettlementPaymentEmail(
+            user.email,
+            userName,
+            Number(amount),
+            settlementType,
+            settlementId,
+          );
+        } catch (emailError) {
+          // Log email error but don't fail the notification process
+          console.error('Failed to send settlement payment email:', emailError);
+        }
+      }
     } catch (error) {
       // Log error but don't fail the update operation
       console.error('Failed to send payment notification:', error);
@@ -801,15 +825,24 @@ export class SettlementService {
       };
     });
 
-    // Get direct users (not belonging to any manager and not managers themselves)
+    // Get direct users (not belonging to any REFERRAL_MANAGER and not managers themselves)
     const managerIds = new Set(referralManagers.map((m) => m.id));
-    const referredUserIds = new Set(userToManagerMap.keys());
+
+    // Only get users referred by REFERRAL_MANAGER (not ADMIN)
+    const usersReferredByManagers = new Set<number>();
+    allReferrals.forEach((ref) => {
+      // Check if the referrer is a REFERRAL_MANAGER
+      const referrer = referralManagers.find((rm) => rm.id === ref.referrerId);
+      if (referrer) {
+        usersReferredByManagers.add(ref.refereeId);
+      }
+    });
 
     const directUserSettlements = allSettlements.filter((s) => {
       return (
-        !managerIds.has(s.userId) &&
-        !referredUserIds.has(s.userId) &&
-        s.user.role !== 'REFERRAL_MANAGER'
+        !managerIds.has(s.userId) && // Not a referral manager themselves
+        !usersReferredByManagers.has(s.userId) && // Not referred by a REFERRAL_MANAGER
+        s.user.role !== 'REFERRAL_MANAGER' // Not a referral manager role
       );
     });
 
