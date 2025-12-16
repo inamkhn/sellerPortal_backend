@@ -67,6 +67,8 @@ export class ProfileService {
         whatsappNumber: createProfileDto.whatsappNumber,
         bankAccount: createProfileDto.bankAccount,
         accountNumber: createProfileDto.accountNumber,
+        bankName: createProfileDto.bankName,
+        accountTitle: createProfileDto.accountTitle,
         facebookLink: createProfileDto.facebookLink,
         dubizzleLink: createProfileDto.dubizzleLink,
         referralCode: createProfileDto.referralCode,
@@ -186,6 +188,8 @@ export class ProfileService {
       whatsappNumber: string | null;
       bankAccount: any;
       accountNumber: string | null;
+      bankName: string | null;
+      accountTitle: string | null;
       facebookLink: string | null;
       dubizzleLink: string | null;
       verified: boolean;
@@ -208,6 +212,12 @@ export class ProfileService {
     }
     if (updateProfileDto.accountNumber !== undefined) {
       updateData.accountNumber = updateProfileDto.accountNumber;
+    }
+    if (updateProfileDto.bankName !== undefined) {
+      updateData.bankName = updateProfileDto.bankName;
+    }
+    if (updateProfileDto.accountTitle !== undefined) {
+      updateData.accountTitle = updateProfileDto.accountTitle;
     }
     if (updateProfileDto.facebookLink !== undefined) {
       updateData.facebookLink = updateProfileDto.facebookLink;

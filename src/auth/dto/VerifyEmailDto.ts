@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class VerifyEmailDto {
@@ -6,6 +7,7 @@ export class VerifyEmailDto {
     example: 'user@example.com',
     description: 'The email address of the user',
   })
+  @Transform(({ value }) => value?.toLowerCase().trim())
   @IsEmail({}, { message: 'Must be a valid email address' })
   @IsNotEmpty({ message: 'Email is required' })
   email: string;

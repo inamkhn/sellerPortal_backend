@@ -327,6 +327,8 @@ export class SettlementService {
                   fullName: true,
                   accountNumber: true,
                   bankAccount: true,
+                  bankName: true,
+                  accountTitle: true,
                   whatsappNumber: true,
                 },
               },
@@ -389,69 +391,6 @@ export class SettlementService {
     };
   }
 
-  // async findOne(id: number, userId: number, userRole: string) {
-  //   const settlement = await this.prisma.settlement.findUnique({
-  //     where: { id },
-  //     include: {
-  //       user: {
-  //         select: {
-  //           id: true,
-  //           firstName: true,
-  //           lastName: true,
-  //           email: true,
-  //           role: true,
-  //           profile: true,
-  //         },
-  //       },
-  //       orderSettlement: {
-  //         include: {
-  //           orderRequest: {
-  //             include: {
-  //               user: {
-  //                 select: {
-  //                   id: true,
-  //                   firstName: true,
-  //                   lastName: true,
-  //                   email: true,
-  //                 },
-  //               },
-  //               product: true,
-  //               customProduct: true,
-  //             },
-  //           },
-  //         },
-  //       },
-  //     },
-  //   });
-
-  //   if (!settlement) {
-  //     return null;
-  //   }
-
-  //   // Role-based access control
-  //   if (userRole === 'ADMIN') {
-  //     return settlement;
-  //   } else {
-  //     // USER and REFERRAL_MANAGER can access own settlements or settlements of their referrals
-  //     if (settlement.userId === userId) {
-  //       return settlement;
-  //     }
-
-  //     const isReferredUser = await this.prisma.referral.findFirst({
-  //       where: {
-  //         referrerId: userId,
-  //         refereeId: settlement.userId,
-  //       },
-  //     });
-
-  //     if (isReferredUser) {
-  //       return settlement;
-  //     }
-
-  //     return null;
-  //   }
-  // }
-
   async create(
     orderSettlementId: number,
     userId: number,
@@ -501,6 +440,9 @@ export class SettlementService {
                 fullName: true,
                 accountNumber: true,
                 bankAccount: true,
+                bankName: true,
+                accountTitle: true,
+                whatsappNumber: true,
               },
             },
           },

@@ -98,7 +98,7 @@ export class CreateOrderRequestDto {
   })
   @IsOptional()
   @IsString({ message: 'Customer notes must be a string' })
-  @Length(0, 500, { message: 'Customer notes must not exceed 500 characters' })
+  @Length(0, 1000, { message: 'Customer notes must not exceed 500 characters' })
   customerNotes?: string;
 
   @ApiProperty({

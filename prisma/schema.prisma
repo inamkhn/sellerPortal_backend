@@ -25,19 +25,17 @@ model User {
   emailVerificationOtp       String?           @map("email_verification_otp")
   passwordResetExpiry        DateTime?         @map("password_reset_expiry")
   passwordResetOtp           String?           @map("password_reset_otp")
+  sentMessages               ChatMessage[]
+  chatParticipants           ChatParticipant[]
+  notifications              Notification[]
   orderRequests              OrderRequest[]
+  orderSettlementsAsReferrer OrderSettlement[] @relation("OrderReferrerSettlements")
   products                   Product[]
   referredUsers              Profile[]         @relation("ReferredByRelation")
   profile                    Profile?
   referralsReceived          Referral[]        @relation("RefereeRelation")
   referralsMade              Referral[]        @relation("ReferrerRelation")
   settlements                Settlement[]
-  orderSettlementsAsReferrer OrderSettlement[] @relation("OrderReferrerSettlements")
-
-  // Chat relations
-  chatParticipants ChatParticipant[]
-  sentMessages     ChatMessage[]
-  notifications    Notification[]
 
   @@index([email])
   @@index([googleId])
@@ -54,6 +52,8 @@ model Profile {
   whatsappNumber String?      @map("whatsapp_number")
   bankAccount    BankAccount? @map("bank_account")
   accountNumber  String?      @map("account_number")
+  bankName       String?      @map("bank_name")
+  accountTitle   String?      @map("account_title")
   facebookLink   String?      @map("facebook_link")
   dubizzleLink   String?      @map("dubizzle_link")
   verified       Boolean      @default(false)
@@ -86,25 +86,25 @@ model Referral {
 }
 
 model Product {
-  id                    Int                   @id @default(autoincrement())
-  ownerId               Int                   @map("owner_id")
-  title                 String
-  description           String?
-  price                 Decimal               @db.Decimal(10, 2)
-  categoryId            Int                   @map("category_id")
-  condition             ProductCondition
-  photos                String[]              @default([])
-  brand                 String?
-  colors                String[]              @default([])
-  location              String?
-  material              String?
-  productTags           String[]              @default([]) @map("product_tags")
-  quantity              Int                   @default(1)
-  sku                   String?               @unique
-  createdAt             DateTime              @default(now()) @map("created_at")
-  category              Category              @relation(fields: [categoryId], references: [id])
-  orderRequests         OrderRequest[]
-  owner                 User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id            Int              @id @default(autoincrement())
+  ownerId       Int              @map("owner_id")
+  title         String
+  description   String?
+  price         Decimal          @db.Decimal(10, 2)
+  condition     ProductCondition
+  photos        String[]         @default([])
+  brand         String?
+  colors        String[]         @default([])
+  location      String?
+  material      String?
+  productTags   String[]         @default([]) @map("product_tags")
+  quantity      Int              @default(1)
+  sku           String?          @unique
+  createdAt     DateTime         @default(now()) @map("created_at")
+  categoryId    Int              @map("category_id")
+  orderRequests OrderRequest[]
+  category      Category         @relation(fields: [categoryId], references: [id])
+  owner         User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
   @@index([categoryId])
@@ -118,8 +118,8 @@ model Category {
   name           String          @unique
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
-  products       Product[]
   customProducts CustomProduct[]
+  products       Product[]
 
   @@map("categories")
 }
@@ -129,10 +129,10 @@ model CustomProduct {
   orderRequestId Int          @map("order_request_id")
   name           String       @map("product_name")
   description    String?      @map("product_description")
-  categoryId     Int          @map("category_id")
   images         String[]     @default([]) @map("customize_images")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
+  categoryId     Int          @map("category_id")
   category       Category     @relation(fields: [categoryId], references: [id])
   orderRequest   OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
 
@@ -145,21 +145,21 @@ model OrderRequest {
   id               Int               @id @default(autoincrement())
   userId           Int               @map("user_id")
   productId        Int?              @map("product_id")
-  isCustomProduct  Boolean           @default(false) @map("is_custom_product")
   platform         String?
   decidedPrice     Decimal           @db.Decimal(10, 2)
   advancePayment   Boolean           @default(false) @map("advance_payment")
-  advancePay       Decimal?          @map("advance_pay") @db.Decimal(10, 2)
   customerName     String            @map("customer_name")
   customerPhone    String            @map("customer_phone")
   customerWhatsapp String            @map("customer_whatsapp")
   customerEmail    String            @map("customer_email")
-  customerNotes    String?           @map("customer_notes")
   deliveryAddress  String?           @map("delivery_address")
   deliveryDate     DateTime?         @map("delivery_date")
   status           OrderStatus       @default(PENDING)
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
+  customerNotes    String?           @map("customer_notes")
+  advancePay       Decimal?          @map("advance_pay") @db.Decimal(10, 2)
+  isCustomProduct  Boolean           @default(false) @map("is_custom_product")
   customProducts   CustomProduct[]
   product          Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -173,7 +173,6 @@ model OrderRequest {
   @@map("order_requests")
 }
 
-// When admin marks order as PARTIALLY_DELIVERED or DELIVERED, create settlement record
 model OrderSettlement {
   id                     Int                   @id @default(autoincrement())
   orderRequestId         Int                   @map("order_request_id")
@@ -192,9 +191,9 @@ model OrderSettlement {
   referralSettledBy      Int?                  @map("referral_settled_by")
   referralSettledAt      DateTime?             @map("referral_settled_at")
   notes                  String?
-  status                 OrderSettlementStatus @default(PENDING)
   createdAt              DateTime              @default(now()) @map("created_at")
   updatedAt              DateTime              @updatedAt @map("updated_at")
+  status                 OrderSettlementStatus @default(PENDING)
   orderRequest           OrderRequest          @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
   referrer               User?                 @relation("OrderReferrerSettlements", fields: [referrerId], references: [id])
   settlements            Settlement[]
@@ -207,7 +206,6 @@ model OrderSettlement {
   @@map("order_settlements")
 }
 
-// Individual settlement records for each party
 model Settlement {
   id                Int              @id @default(autoincrement())
   orderSettlementId Int              @map("order_settlement_id")
@@ -230,17 +228,15 @@ model Settlement {
   @@map("settlements")
 }
 
-// ============== CHAT SYSTEM ==============
-
 model ChatRoom {
   id            Int               @id @default(autoincrement())
   type          ChatRoomType      @default(DIRECT)
-  referralId    Int?              @map("referral_id") // Links manager support chats to referral relationship
+  referralId    Int?              @map("referral_id")
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
   lastMessageAt DateTime?         @map("last_message_at")
-  participants  ChatParticipant[]
   messages      ChatMessage[]
+  participants  ChatParticipant[]
 
   @@index([type])
   @@index([lastMessageAt])
@@ -272,7 +268,7 @@ model ChatMessage {
   id          Int           @id @default(autoincrement())
   chatRoomId  Int           @map("chat_room_id")
   senderId    Int           @map("sender_id")
-  content     String?       @db.Text
+  content     String?
   messageType MessageType   @default(TEXT)
   fileUrl     String?       @map("file_url")
   fileName    String?       @map("file_name")
@@ -295,14 +291,12 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
-// ============== NOTIFICATION SYSTEM ==============
-
 model Notification {
   id          Int              @id @default(autoincrement())
   userId      Int              @map("user_id")
   type        NotificationType
   title       String
-  message     String           @db.Text
+  message     String
   isRead      Boolean          @default(false) @map("is_read")
   actionUrl   String?          @map("action_url")
   referenceId Int?             @map("reference_id")
@@ -318,13 +312,11 @@ model Notification {
   @@map("notifications")
 }
 
-// ============== ANNOUNCEMENT SYSTEM ==============
-
 model Announcement {
   id         Int                  @id @default(autoincrement())
   adminId    Int                  @map("admin_id")
   title      String
-  message    String               @db.Text
+  message    String
   priority   AnnouncementPriority @default(NORMAL)
   targetRole Role?                @map("target_role")
   isActive   Boolean              @default(true) @map("is_active")
@@ -339,8 +331,6 @@ model Announcement {
   @@index([expiresAt])
   @@map("announcements")
 }
-
-// ============== ENUMS ==============
 
 enum Role {
   USER
@@ -400,7 +390,7 @@ enum OrderSettlementStatus {
 
 enum SettlementType {
   SELLER_PAYMENT
-  REFERRAL_PAYMENT // Works for both USER and REFERRAL_MANAGER referrers
+  REFERRAL_PAYMENT
   ADMIN_COMMISSION
 
   @@map("settlement_type")
@@ -420,7 +410,7 @@ enum MessageType {
   VIDEO
   DOCUMENT
   AUDIO
-  VOICE_NOTE // Dedicated type for voice messages
+  VOICE_NOTE
   FILE
 
   @@map("message_type")

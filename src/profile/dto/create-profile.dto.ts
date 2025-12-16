@@ -66,6 +66,30 @@ export class CreateProfileDto {
   accountNumber?: string;
 
   @ApiProperty({
+    description: 'Bank name',
+    example: 'Meezan Bank',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 100, {
+    message: 'Bank name must be between 2 and 100 characters',
+  })
+  bankName?: string;
+
+  @ApiProperty({
+    description: 'Account holder name',
+    example: 'John Doe',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 100, {
+    message: 'Account title must be between 2 and 100 characters',
+  })
+  accountTitle?: string;
+
+  @ApiProperty({
     description: 'Facebook profile link (optional, can be empty)',
     example: 'https://facebook.com/johndoe',
     required: false,
