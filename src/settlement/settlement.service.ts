@@ -269,18 +269,27 @@ export class SettlementService {
     // Role-based filtering
     if (userRole === 'ADMIN') {
       // Admin can see all settlements
-    } else {
-      // USER and REFERRAL_MANAGER can see their own settlements + settlements of their referrals
-      const referredUsers = await this.prisma.referral.findMany({
-        where: { referrerId: userId },
-        select: { refereeId: true },
+    } else if (userRole === 'REFERRAL_MANAGER') {
+      // REFERRAL_MANAGER can see:
+      // 1. Their own commissions (where they are the recipient)
+      // 2. Settlements of users they referred
+      const referredUsers = await this.prisma.user.findMany({
+        where: {
+          profile: {
+            referredBy: userId,
+          },
+        },
+        select: { id: true },
       });
 
-      const referredUserIds = referredUsers.map((r) => r.refereeId);
+      const referredUserIds = referredUsers.map((user) => user.id);
 
       where.userId = {
         in: [userId, ...referredUserIds],
       };
+    } else {
+      // USER can see only their own settlements
+      where.userId = userId;
     }
 
     // Status filter
