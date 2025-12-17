@@ -662,7 +662,14 @@ export class OrderSettlementService {
   async getPendingCommissions(referralManagerId: number) {
     const orderSettlements = await this.database.orderSettlement.findMany({
       where: {
-        referrerId: referralManagerId,
+        // Find settlements where the seller was referred by this manager
+        orderRequest: {
+          user: {
+            profile: {
+              referredBy: referralManagerId,
+            },
+          },
+        },
         referrerRole: Role.REFERRAL_MANAGER,
         OR: [
           { status: OrderSettlementStatus.MANAGER_PENDING },
