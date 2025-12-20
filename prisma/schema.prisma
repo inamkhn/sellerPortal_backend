@@ -142,34 +142,42 @@ model CustomProduct {
 }
 
 model OrderRequest {
-  id               Int               @id @default(autoincrement())
-  userId           Int               @map("user_id")
-  productId        Int?              @map("product_id")
+  id               Int         @id @default(autoincrement())
+  userId           Int         @map("user_id")
+  productId        Int?        @map("product_id")
   platform         String?
-  decidedPrice     Decimal           @db.Decimal(10, 2)
-  advancePayment   Boolean           @default(false) @map("advance_payment")
-  customerName     String            @map("customer_name")
-  customerPhone    String            @map("customer_phone")
-  customerWhatsapp String            @map("customer_whatsapp")
-  customerEmail    String            @map("customer_email")
-  deliveryAddress  String?           @map("delivery_address")
-  deliveryDate     DateTime?         @map("delivery_date")
-  status           OrderStatus       @default(PENDING)
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  customerNotes    String?           @map("customer_notes")
-  advancePay       Decimal?          @map("advance_pay") @db.Decimal(10, 2)
-  isCustomProduct  Boolean           @default(false) @map("is_custom_product")
+  decidedPrice     Decimal     @db.Decimal(10, 2)
+  advancePayment   Boolean     @default(false) @map("advance_payment")
+  customerName     String      @map("customer_name")
+  customerPhone    String      @map("customer_phone")
+  customerWhatsapp String      @map("customer_whatsapp")
+  customerEmail    String      @map("customer_email")
+  deliveryAddress  String?     @map("delivery_address")
+  deliveryDate     DateTime?   @map("delivery_date")
+  status           OrderStatus @default(PENDING)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  customerNotes    String?     @map("customer_notes")
+  advancePay       Decimal?    @map("advance_pay") @db.Decimal(10, 2)
+  isCustomProduct  Boolean     @default(false) @map("is_custom_product")
+
+  // NEW FIELD: Track who received the advance payment
+  advanceReceivedBy AdvanceRecipient? @default(NONE) @map("advance_received_by")
+
   customProducts   CustomProduct[]
   product          Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   orderSettlements OrderSettlement[]
+
+  // NEW RELATION: Factory payments for this order
+  factoryPayments FactoryPayment[]
 
   @@index([userId])
   @@index([productId])
   @@index([status])
   @@index([isCustomProduct])
   @@index([createdAt])
+  @@index([advanceReceivedBy])
   @@map("order_requests")
 }
 
@@ -443,4 +451,29 @@ enum AnnouncementPriority {
   URGENT
 
   @@map("announcement_priority")
+}
+
+model FactoryPayment {
+  id             Int       @id @default(autoincrement())
+  orderRequestId Int       @map("order_request_id")
+  amount         Decimal   @db.Decimal(10, 2)
+  paidAt         DateTime  @default(now()) @map("paid_at")
+  paymentProof   String?   @map("payment_proof")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  
+  orderRequest   OrderRequest @relation(fields: [orderRequestId], references: [id], onDelete: Cascade)
+  
+  @@index([orderRequestId])
+  @@index([paidAt])
+  @@map("factory_payments")
+}
+
+enum AdvanceRecipient {
+  FACTORY
+  ADMIN
+  NONE
+
+  @@map("advance_recipient")
 }
