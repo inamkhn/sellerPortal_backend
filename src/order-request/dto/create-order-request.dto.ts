@@ -94,7 +94,7 @@ export class CreateOrderRequestDto {
   @ApiProperty({
     example: 'Customer prefers morning delivery',
     required: false,
-    maxLength: 500,
+    maxLength: 1000,
   })
   @IsOptional()
   @IsString({ message: 'Customer notes must be a string' })
@@ -142,11 +142,11 @@ export class CreateOrderRequestDto {
   @ApiProperty({
     example: '123 Main Street, Karachi',
     required: false,
-    maxLength: 200,
+    maxLength: 500,
   })
   @IsOptional()
   @IsString({ message: 'Delivery address must be a string' })
-  @Length(0, 200, {
+  @Length(0, 500, {
     message: 'Delivery address must not exceed 200 characters',
   })
   deliveryAddress?: string;
