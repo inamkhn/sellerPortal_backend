@@ -36,6 +36,7 @@ model User {
   referralsReceived          Referral[]        @relation("RefereeRelation")
   referralsMade              Referral[]        @relation("ReferrerRelation")
   settlements                Settlement[]
+  factoryPaymentActions      FactoryPaymentHistory[]
 
   @@index([email])
   @@index([googleId])
@@ -171,6 +172,32 @@ model OrderRequest {
   @@index([isCustomProduct])
   @@index([createdAt])
   @@map("order_requests")
+}
+
+// Global factory payment tracking
+model FactoryPayment {
+  id        Int      @id @default(autoincrement())
+  totalPaid Decimal  @default(0) @db.Decimal(10, 2) @map("total_paid")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  history   FactoryPaymentHistory[]
+
+  @@map("factory_payment")
+}
+
+model FactoryPaymentHistory {
+  id               Int            @id @default(autoincrement())
+  factoryPaymentId Int            @map("factory_payment_id")
+  amount           Decimal        @db.Decimal(10, 2)
+  adminId          Int            @map("admin_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  
+  factoryPayment   FactoryPayment @relation(fields: [factoryPaymentId], references: [id], onDelete: Cascade)
+  admin            User           @relation(fields: [adminId], references: [id])
+
+  @@index([factoryPaymentId])
+  @@index([adminId])
+  @@map("factory_payment_history")
 }
 
 model OrderSettlement {

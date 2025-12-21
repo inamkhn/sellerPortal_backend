@@ -23,6 +23,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { ChatModule } from './chat/chat.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { FactoryPaymentModule } from './factory-payment/factory-payment.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ChatModule,
     AnnouncementsModule,
     NotificationsModule,
+    FactoryPaymentModule,
   ],
 })
 export class AppModule {}

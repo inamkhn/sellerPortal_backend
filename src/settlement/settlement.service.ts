@@ -752,7 +752,12 @@ export class SettlementService {
         .reduce((sum, s) => sum + Number(s.amount), 0);
 
       const totalPaid = managerSettlements
-        .filter((s) => s.status === SettlementStatus.PAID)
+        .filter(
+          (s) =>
+            s.status === SettlementStatus.PAID &&
+            (s.settlementType === SettlementType.SELLER_PAYMENT ||
+              s.settlementType === SettlementType.REFERRAL_PAYMENT),
+        )
         .reduce((sum, s) => sum + Number(s.amount), 0);
 
       return {
@@ -802,7 +807,12 @@ export class SettlementService {
       .reduce((sum, s) => sum + Number(s.amount), 0);
 
     const directUsersTotalPaid = directUserSettlements
-      .filter((s) => s.status === SettlementStatus.PAID)
+      .filter(
+        (s) =>
+          s.status === SettlementStatus.PAID &&
+          (s.settlementType === SettlementType.SELLER_PAYMENT ||
+            s.settlementType === SettlementType.REFERRAL_PAYMENT),
+      )
       .reduce((sum, s) => sum + Number(s.amount), 0);
 
     return {

@@ -730,6 +730,10 @@ export class OrderRequestService {
               updatedFields.push('delivery address');
             if (updateData.deliveryDate !== undefined)
               updatedFields.push('delivery date');
+            if (updateData.customerNotes !== undefined)
+              updatedFields.push('notes');
+            if (updateData.advancePayment !== undefined)
+              updatedFields.push('advance payment');
 
             if (updatedFields.length > 0) {
               await this.notificationsService.createNotificationByRole(
