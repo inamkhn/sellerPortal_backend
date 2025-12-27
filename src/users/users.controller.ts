@@ -110,6 +110,7 @@ export class UsersController {
    * - If verified is not provided and role is REFERRAL_MANAGER, auto-verifies profile
    */
   @Patch(':id/role')
+  @Roles(Role.ADMIN, Role.REFERRAL_MANAGER)
   async updateUserRole(
     @Param('id', ParseIntPipe) id: number,
     @Body(ValidationPipe) updateRoleDto: UpdateRoleDto,

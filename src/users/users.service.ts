@@ -443,7 +443,35 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Determine verification status
+    // If only updating verification status (no role change)
+    if (!updateRoleDto.role && updateRoleDto.verified !== undefined) {
+      // Update profile verification only
+      if (user.profile) {
+        await this.prisma.profile.update({
+          where: { userId },
+          data: {
+            verified: updateRoleDto.verified,
+          },
+        });
+      } else {
+        // Create profile if it doesn't exist
+        await this.prisma.profile.create({
+          data: {
+            userId,
+            referralCode: await this.generateUniqueReferralCode(),
+            verified: updateRoleDto.verified,
+          },
+        });
+      }
+
+      // Return updated user
+      return await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { profile: true },
+      });
+    }
+
+    // Determine verification status when role is being updated
     // If verified is explicitly provided, use it
     // Otherwise, auto-verify when promoting to REFERRAL_MANAGER
     const shouldVerify =
@@ -484,7 +512,7 @@ export class UsersService {
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        role: updateRoleDto.role,
+        role: updateRoleDto.role || user.role, // Keep existing role if not provided
         isVerified: shouldVerify ? true : user.isVerified,
       },
       include: {

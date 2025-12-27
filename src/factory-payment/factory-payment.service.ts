@@ -4,7 +4,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class FactoryPaymentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
    * Get summary of factory payments
@@ -13,9 +13,9 @@ export class FactoryPaymentService {
   async getSummary() {
     // Get all delivered orders with their settlements (needed for accurate total calculation)
     const deliveredOrders = await this.prisma.orderRequest.findMany({
-      where: { status: 'DELIVERED' },
+      where: { status: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } },
       include: {
-        orderSettlements: true,
+        orderSettlements: true, 
       },
     });
 
@@ -26,10 +26,16 @@ export class FactoryPaymentService {
 
     for (const order of deliveredOrders) {
       const settlement = order.orderSettlements[0];
-      
-      if (settlement && settlement.productCost && Number(settlement.productCost) > 0) {
+
+      if (
+        settlement &&
+        settlement.productCost &&
+        Number(settlement.productCost) > 0
+      ) {
         // Order has product cost - can calculate
-        const yourShare = new Decimal(order.decidedPrice).minus(settlement.productCost);
+        const yourShare = new Decimal(order.decidedPrice).minus(
+          settlement.productCost,
+        );
         totalOwed = totalOwed.plus(yourShare);
         ordersWithCostCount++;
       } else {
@@ -40,7 +46,7 @@ export class FactoryPaymentService {
 
     // Get total paid from factory
     let factoryPayment = await this.prisma.factoryPayment.findFirst();
-    
+
     // Create record if doesn't exist
     if (!factoryPayment) {
       factoryPayment = await this.prisma.factoryPayment.create({
@@ -66,15 +72,15 @@ export class FactoryPaymentService {
    */
   async getDeliveredOrders(page: number = 1, limit: number = 10) {
     const skip = (page - 1) * limit;
-    
+
     // Get total count
     const total = await this.prisma.orderRequest.count({
-      where: { status: 'DELIVERED' },
+      where: { status: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } },
     });
 
     // Get paginated orders
     const orders = await this.prisma.orderRequest.findMany({
-      where: { status: 'DELIVERED' },
+      where: { status: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } },
       include: {
         orderSettlements: true,
       },
@@ -86,37 +92,43 @@ export class FactoryPaymentService {
     });
 
     // Process orders
-    const processedOrders = orders.map(order => {
-        const settlement = order.orderSettlements[0];
-        let productCost: number | null = null;
-        let yourShare: number | null = null;
-        let hasProductCost = false;
+    const processedOrders = orders.map((order) => {
+      const settlement = order.orderSettlements[0];
+      let productCost: number | null = null;
+      let yourShare: number | null = null;
+      let hasProductCost = false;
 
-        if (settlement && settlement.productCost && Number(settlement.productCost) > 0) {
-            productCost = Number(settlement.productCost);
-            yourShare = Number(new Decimal(order.decidedPrice).minus(settlement.productCost));
-            hasProductCost = true;
-        }
+      if (
+        settlement &&
+        settlement.productCost &&
+        Number(settlement.productCost) > 0
+      ) {
+        productCost = Number(settlement.productCost);
+        yourShare = Number(
+          new Decimal(order.decidedPrice).minus(settlement.productCost),
+        );
+        hasProductCost = true;
+      }
 
-        return {
-            id: order.id,
-            customerName: order.customerName,
-            decidedPrice: Number(order.decidedPrice),
-            productCost,
-            yourShare,
-            deliveryDate: order.deliveryDate,
-            hasProductCost
-        };
+      return {
+        id: order.id,
+        customerName: order.customerName,
+        decidedPrice: Number(order.decidedPrice),
+        productCost,
+        yourShare,
+        deliveryDate: order.deliveryDate,
+        hasProductCost,
+      };
     });
 
     return {
-        data: processedOrders,
-        meta: {
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
-        }
+      data: processedOrders,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -124,7 +136,7 @@ export class FactoryPaymentService {
    * Add payment from factory
    * @param amount Amount to add to total paid
    */
-    async getHistory(page: number = 1, limit: number = 10) {
+  async getHistory(page: number = 1, limit: number = 10) {
     const skip = (page - 1) * limit;
 
     const [history, total] = await Promise.all([

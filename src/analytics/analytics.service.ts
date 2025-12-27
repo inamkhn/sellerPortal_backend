@@ -332,15 +332,23 @@ export class AnalyticsService {
       '#06b6d4',
     ];
 
+    // Fetch all delivered orders (both regular and custom products)
     const orders = await this.prisma.orderRequest.findMany({
       where: {
         status: { in: deliveredStatuses },
         createdAt: { gte: startDate, lte: endDate },
-        productId: { not: null },
       },
       select: {
         decidedPrice: true,
+        isCustomProduct: true,
         product: {
+          select: {
+            category: {
+              select: { name: true },
+            },
+          },
+        },
+        customProducts: {
           select: {
             category: {
               select: { name: true },
@@ -353,7 +361,17 @@ export class AnalyticsService {
     const grouped = new Map<string, number>();
 
     orders.forEach((order) => {
-      const categoryName = order.product?.category?.name || 'Other';
+      let categoryName = 'Other';
+
+      // For regular products, get category from product.category
+      if (order.product?.category?.name) {
+        categoryName = order.product.category.name;
+      }
+      // For custom products, get category from customProducts[0].category
+      else if (order.isCustomProduct && order.customProducts?.[0]?.category?.name) {
+        categoryName = order.customProducts[0].category.name;
+      }
+
       const current = grouped.get(categoryName) || 0;
       grouped.set(categoryName, current + Number(order.decidedPrice));
     });
@@ -579,6 +597,7 @@ export class AnalyticsService {
     endDate: Date,
     page: number,
     limit: number,
+    sortBy: 'revenue' | 'orders' = 'revenue',
   ): Promise<{ data: SellerDetail[]; pagination: PaginationMeta }> {
     const deliveredStatuses: OrderStatus[] = [
       OrderStatus.DELIVERED,
@@ -606,10 +625,10 @@ export class AnalyticsService {
         role: { not: Role.ADMIN },
         orderRequests: {
           some: {
-            status: { in: deliveredStatuses },
-            createdAt: { gte: startDate, lte: endDate },
+        status: { in: deliveredStatuses },
+        createdAt: { gte: startDate, lte: endDate },
           },
-        },
+      },
       },
       select: {
         id: true,

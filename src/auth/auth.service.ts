@@ -208,7 +208,7 @@ export class AuthService {
               type: 'SYSTEM',
               title: 'New Referral Signup',
               message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
-              actionUrl: `/referrals/${referrer.id}`,
+              actionUrl: `/referrals/${user.id}`,
               referenceId: user.id,
               metadata: {
                 newUserId: user.id,

@@ -85,6 +85,7 @@ export class ReferralsService {
           select: {
             whatsappNumber: true,
             referralCode: true,
+            verified: true,
           },
         },
         orderRequests: {
@@ -133,6 +134,7 @@ export class ReferralsService {
         commissionEarned,
         status: isActive ? 'ACTIVE' : 'INACTIVE',
         referralCode: user.profile?.referralCode || '',
+        verified: user.profile?.verified || false,
       };
     });
 
@@ -206,6 +208,11 @@ export class ReferralsService {
           select: {
             whatsappNumber: true,
             referralCode: true,
+            fullName: true,
+            bankAccount: true,
+            accountNumber: true,
+            bankName: true,
+            verified: true,
           },
         },
         orderRequests: {
@@ -287,6 +294,12 @@ export class ReferralsService {
       status: totalOrders > 0 ? 'ACTIVE' : 'INACTIVE',
       referralCode: user.profile?.referralCode || '',
       orders,
+      // Profile fields
+      fullName: user.profile?.fullName || null,
+      bankAccount: user.profile?.bankAccount || null,
+      accountNumber: user.profile?.accountNumber || null,
+      bankName: user.profile?.bankName || null,
+      verified: user.profile?.verified || false,
     };
   }
 }
