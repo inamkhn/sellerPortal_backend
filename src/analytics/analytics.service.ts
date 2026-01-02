@@ -263,11 +263,15 @@ export class AnalyticsService {
       let key: string;
 
       if (dateRange === DateRange.TWELVE_MONTHS) {
-        key = date.toLocaleString('default', { month: 'short' });
+        key = date.toLocaleString('default', {
+          month: 'short',
+          timeZone: 'Asia/Karachi',
+        });
       } else if (dateRange === DateRange.ALL_TIME) {
         key = date.toLocaleString('default', {
           month: 'short',
           year: 'numeric',
+          timeZone: 'Asia/Karachi',
         });
       } else if (dateRange === DateRange.NINETY_DAYS) {
         const weekNum = Math.floor(
@@ -279,6 +283,7 @@ export class AnalyticsService {
         key = date.toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
+          timeZone: 'Asia/Karachi',
         });
       }
 

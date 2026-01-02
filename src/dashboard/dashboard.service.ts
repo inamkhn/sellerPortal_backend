@@ -638,18 +638,38 @@ export class DashboardService {
     const monthlyRevenue = new Map<string, number>();
     const currentDate = new Date(startDate);
 
+    // Adjust start date to UTC+5 for correct month iteration
+    // (This is a simplified approach; strictly we should iterate based on formatted strings)
+    
+    // Better approach: Iterate months and format them using the target timezone
     for (let i = 0; i < months; i++) {
-      const monthKey = `${monthNames[currentDate.getMonth()]}-${currentDate.getFullYear()}`;
-      console.log(`Revenue Trend Debug - Adding month ${i}:`, monthKey);
-      monthlyRevenue.set(monthKey, 0);
-      currentDate.setMonth(currentDate.getMonth() + 1);
+        // Create a date for the 1st of each month in the sequence
+        // We use the loop index to offset from the start date
+        const d = new Date(startDate);
+        d.setMonth(d.getMonth() + i);
+        
+        const monthKey = d.toLocaleString('default', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).replace(' ', '-');
+        // The format needed is "Jan-2024" but toLocaleString might give "Jan 2024" or "Jan 2024" depending on locale.
+        // Let's stick to the previous manual construction but using parts extracted with timezone
+        const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(d);
+        const m = parts.find(p => p.type === 'month')?.value;
+        const y = parts.find(p => p.type === 'year')?.value;
+        const key = `${m}-${y}`;
+        
+        monthlyRevenue.set(key, 0);
     }
+    
     let totalEarnings = 0;
 
     // Group by month and calculate revenue
     orders.forEach((order) => {
       const date = new Date(order.updatedAt);
-      const monthKey = `${monthNames[date.getMonth()]}-${date.getFullYear()}`;
+      
+      const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(date);
+      const m = parts.find(p => p.type === 'month')?.value;
+      const y = parts.find(p => p.type === 'year')?.value;
+      const monthKey = `${m}-${y}`;
+
       const currentRevenue = monthlyRevenue.get(monthKey) || 0;
       const orderAmount = Number(order.decidedPrice);
       monthlyRevenue.set(monthKey, currentRevenue + orderAmount);
