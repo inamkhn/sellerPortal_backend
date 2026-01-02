@@ -603,7 +603,9 @@ export class DashboardService {
     const orders = await this.prisma.orderRequest.findMany({
       where: {
         ...userFilter,
-        status: 'DELIVERED',
+        status: {
+          in: ['DELIVERED', 'PARTIALLY_DELIVERED'],
+        },
         updatedAt: {
           gte: startDate,
         },

@@ -21,6 +21,8 @@ export interface ChartsData {
   revenueOverTime: ChartDataPoint[];
   ordersByStatus: ChartDataPoint[];
   revenueByCategory: ChartDataPoint[];
+  commissionOverTime: ChartDataPoint[];
+  deliveredOrdersOverTime: ChartDataPoint[];
 }
 
 export interface OverviewResponse {

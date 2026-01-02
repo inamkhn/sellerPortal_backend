@@ -197,14 +197,27 @@ export class AnalyticsService {
     endDate: Date,
     dateRange: DateRange,
   ): Promise<ChartsData> {
-    const [revenueOverTime, ordersByStatus, revenueByCategory] =
-      await Promise.all([
-        this.getRevenueOverTime(startDate, endDate, dateRange),
-        this.getOrdersByStatus(startDate, endDate),
-        this.getRevenueByCategory(startDate, endDate),
-      ]);
+    const [
+      revenueOverTime,
+      ordersByStatus,
+      revenueByCategory,
+      commissionOverTime,
+      deliveredOrdersOverTime,
+    ] = await Promise.all([
+      this.getRevenueOverTime(startDate, endDate, dateRange),
+      this.getOrdersByStatus(startDate, endDate),
+      this.getRevenueByCategory(startDate, endDate),
+      this.getCommissionOverTime(startDate, endDate, dateRange),
+      this.getDeliveredOrdersOverTime(startDate, endDate, dateRange),
+    ]);
 
-    return { revenueOverTime, ordersByStatus, revenueByCategory };
+    return {
+      revenueOverTime,
+      ordersByStatus,
+      revenueByCategory,
+      commissionOverTime,
+      deliveredOrdersOverTime,
+    };
   }
 
   // Revenue over time chart
@@ -221,15 +234,21 @@ export class AnalyticsService {
     const orders = await this.prisma.orderRequest.findMany({
       where: {
         status: { in: deliveredStatuses },
-        createdAt: { gte: startDate, lte: endDate },
+        updatedAt: { gte: startDate, lte: endDate },
       },
+      orderBy: { updatedAt: 'asc' },
       select: {
         decidedPrice: true,
-        createdAt: true,
+        updatedAt: true,
       },
     });
 
-    return this.groupByPeriod(orders, dateRange);
+    const formattedData = orders.map((o) => ({
+      decidedPrice: o.decidedPrice,
+      createdAt: o.updatedAt,
+    }));
+
+    return this.groupByPeriod(formattedData, dateRange);
   }
 
   // Group data by time period
@@ -383,6 +402,65 @@ export class AnalyticsService {
         color: categoryColors[index % categoryColors.length],
       }))
       .sort((a, b) => b.value - a.value);
+  }
+
+  // Commission over time chart
+  private async getCommissionOverTime(
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const settlements = await this.prisma.orderSettlement.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      select: {
+        adminCommission: true,
+        createdAt: true,
+      },
+    });
+
+    const formattedData = settlements.map((s) => ({
+      decidedPrice: s.adminCommission,
+      createdAt: s.createdAt,
+    }));
+
+    return this.groupByPeriod(formattedData, dateRange);
+  }
+
+  // Delivered orders over time chart
+  private async getDeliveredOrdersOverTime(
+    startDate: Date,
+    endDate: Date,
+    dateRange: DateRange,
+  ): Promise<ChartDataPoint[]> {
+    const deliveredStatuses: OrderStatus[] = [
+      OrderStatus.DELIVERED,
+      OrderStatus.PARTIALLY_DELIVERED,
+    ];
+
+    const orders = await this.prisma.orderRequest.findMany({
+      where: {
+        status: { in: deliveredStatuses },
+        updatedAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      orderBy: { updatedAt: 'asc' },
+      select: {
+        updatedAt: true,
+      },
+    });
+
+    // Map to format compatible with groupByPeriod
+    // Treat 'decidedPrice' as 1 to count occurrences
+    const formattedData = orders.map((o) => ({
+      decidedPrice: 1,
+      createdAt: o.updatedAt, // Use updatedAt as the date for grouping
+    }));
+
+    return this.groupByPeriod(formattedData, dateRange);
   }
 
   // Get top performers data
