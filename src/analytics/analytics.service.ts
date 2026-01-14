@@ -17,7 +17,7 @@ import { OrderStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // Calculate date ranges based on selection
   private calculateDateRange(dateRange: DateRange): DateRangeResult {
@@ -276,7 +276,7 @@ export class AnalyticsService {
       } else if (dateRange === DateRange.NINETY_DAYS) {
         const weekNum = Math.floor(
           (date.getTime() - orders[0].createdAt.getTime()) /
-            (7 * 24 * 60 * 60 * 1000),
+          (7 * 24 * 60 * 60 * 1000),
         );
         key = `Week ${weekNum + 1}`;
       } else {
@@ -687,32 +687,30 @@ export class AnalyticsService {
       OrderStatus.PARTIALLY_DELIVERED,
     ];
 
-    const skip = (page - 1) * limit;
-
-    // Get total count
-    const totalSellers = await this.prisma.user.count({
+    // Step 1: Get ALL sellers with their revenue using groupBy (same as getTopSellers)
+    const sellersRevenue = await this.prisma.orderRequest.groupBy({
+      by: ['userId'],
       where: {
-        role: { not: Role.ADMIN },
-        orderRequests: {
-          some: {
-            status: { in: deliveredStatuses },
-            createdAt: { gte: startDate, lte: endDate },
-          },
-        },
-      },
-    });
-
-    // Get sellers with their orders and settlements
-    const sellers = await this.prisma.user.findMany({
-      where: {
-        role: { not: Role.ADMIN },
-        orderRequests: {
-          some: {
         status: { in: deliveredStatuses },
         createdAt: { gte: startDate, lte: endDate },
-          },
+        user: { role: { not: Role.ADMIN } },
       },
-      },
+      _sum: { decidedPrice: true },
+      _count: { id: true },
+      orderBy: { _sum: { decidedPrice: 'desc' } },
+    });
+
+    const totalSellers = sellersRevenue.length;
+    const totalPages = Math.ceil(totalSellers / limit);
+
+    // Step 2: Apply pagination to the sorted revenue list
+    const skip = (page - 1) * limit;
+    const paginatedSellers = sellersRevenue.slice(skip, skip + limit);
+    const userIds = paginatedSellers.map((s) => s.userId);
+
+    // Step 3: Fetch full user details for the paginated sellers
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
       select: {
         id: true,
         firstName: true,
@@ -720,15 +718,6 @@ export class AnalyticsService {
         email: true,
         profile: {
           select: { fullName: true },
-        },
-        orderRequests: {
-          where: {
-            status: { in: deliveredStatuses },
-            createdAt: { gte: startDate, lte: endDate },
-          },
-          select: {
-            decidedPrice: true,
-          },
         },
         settlements: {
           where: {
@@ -739,37 +728,28 @@ export class AnalyticsService {
           },
         },
       },
-      skip,
-      take: limit,
     });
 
-    // Format data
-    const data = sellers.map((seller) => {
-      const orders = seller.orderRequests.length;
-      const revenue = seller.orderRequests.reduce(
-        (sum, order) => sum + Number(order.decidedPrice),
-        0,
-      );
-      const commission = seller.settlements.reduce(
+    // Step 4: Format data and maintain sort order
+    const data = paginatedSellers.map((sellerRevenue) => {
+      const user = users.find((u) => u.id === sellerRevenue.userId);
+      const commission = user?.settlements.reduce(
         (sum, settlement) => sum + Number(settlement.amount),
         0,
-      );
+      ) || 0;
 
       return {
-        id: seller.id,
+        id: sellerRevenue.userId,
         name:
-          seller.profile?.fullName ||
-          `${seller.firstName || ''} ${seller.lastName || ''}`.trim() ||
+          user?.profile?.fullName ||
+          `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
           'Unknown',
-        email: seller.email,
-        orders,
-        revenue: Number(revenue.toFixed(2)),
+        email: user?.email || '',
+        orders: sellerRevenue._count.id,
+        revenue: Number(sellerRevenue._sum.decidedPrice || 0),
         commission: Number(commission.toFixed(2)),
       };
     });
-
-    // Sort by revenue descending
-    data.sort((a, b) => b.revenue - a.revenue);
 
     return {
       data,
@@ -777,7 +757,7 @@ export class AnalyticsService {
         total: totalSellers,
         page,
         limit,
-        totalPages: Math.ceil(totalSellers / limit),
+        totalPages,
       },
     };
   }

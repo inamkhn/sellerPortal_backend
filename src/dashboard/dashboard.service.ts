@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
+import { SettlementService } from '../settlement/settlement.service';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settlementService: SettlementService,
+  ) { }
 
   async getOverview(
     userId: number,
@@ -153,8 +157,8 @@ export class DashboardService {
         completionRateChange: Number(completionRateChange.toFixed(1)),
       },
       payout: {
-        canRequestPayout: this.isPayoutWindowActive(),
-        nextPayoutDate: this.getNextPayoutDate(),
+        canRequestPayout: await this.settlementService.isPayoutWindowActive(),
+        nextPayoutDate: await this.settlementService.getNextPayoutDate(),
       },
     };
   }
@@ -175,63 +179,6 @@ export class DashboardService {
     });
 
     return Number(result._sum.amount || 0);
-  }
-
-  // Helper: Check if current date is in payout window
-  private isPayoutWindowActive(): boolean {
-    const now = new Date();
-    const day = now.getDate();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-
-    // Mid-month window: 15-16
-    if (day === 15 || day === 16) {
-      return true;
-    }
-
-    // Month-end window: 30-31
-    if (day === 30 || day === 31) {
-      return true;
-    }
-
-    // First of month (for months with <31 days)
-    if (day === 1) {
-      const lastMonth = new Date(year, month - 1, 1);
-      const daysInLastMonth = new Date(
-        lastMonth.getFullYear(),
-        lastMonth.getMonth() + 1,
-        0,
-      ).getDate();
-      return daysInLastMonth < 31;
-    }
-
-    return false;
-  }
-
-  // Helper: Get next available payout date
-  private getNextPayoutDate(): string {
-    const now = new Date();
-    const day = now.getDate();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-
-    // If currently in payout window, return current date
-    if (this.isPayoutWindowActive()) {
-      return now.toISOString();
-    }
-
-    // Determine next payout date
-    let nextDate: Date;
-
-    if (day < 15) {
-      nextDate = new Date(year, month, 15);
-    } else if (day >= 17 && day < 30) {
-      nextDate = new Date(year, month, 30);
-    } else {
-      nextDate = new Date(year, month + 1, 15);
-    }
-
-    return nextDate.toISOString();
   }
 
   // Helper: Build user filter based on role
@@ -640,31 +587,31 @@ export class DashboardService {
 
     // Adjust start date to UTC+5 for correct month iteration
     // (This is a simplified approach; strictly we should iterate based on formatted strings)
-    
+
     // Better approach: Iterate months and format them using the target timezone
     for (let i = 0; i < months; i++) {
-        // Create a date for the 1st of each month in the sequence
-        // We use the loop index to offset from the start date
-        const d = new Date(startDate);
-        d.setMonth(d.getMonth() + i);
-        
-        const monthKey = d.toLocaleString('default', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).replace(' ', '-');
-        // The format needed is "Jan-2024" but toLocaleString might give "Jan 2024" or "Jan 2024" depending on locale.
-        // Let's stick to the previous manual construction but using parts extracted with timezone
-        const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(d);
-        const m = parts.find(p => p.type === 'month')?.value;
-        const y = parts.find(p => p.type === 'year')?.value;
-        const key = `${m}-${y}`;
-        
-        monthlyRevenue.set(key, 0);
+      // Create a date for the 1st of each month in the sequence
+      // We use the loop index to offset from the start date
+      const d = new Date(startDate);
+      d.setMonth(d.getMonth() + i);
+
+      const monthKey = d.toLocaleString('default', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).replace(' ', '-');
+      // The format needed is "Jan-2024" but toLocaleString might give "Jan 2024" or "Jan 2024" depending on locale.
+      // Let's stick to the previous manual construction but using parts extracted with timezone
+      const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(d);
+      const m = parts.find(p => p.type === 'month')?.value;
+      const y = parts.find(p => p.type === 'year')?.value;
+      const key = `${m}-${y}`;
+
+      monthlyRevenue.set(key, 0);
     }
-    
+
     let totalEarnings = 0;
 
     // Group by month and calculate revenue
     orders.forEach((order) => {
       const date = new Date(order.updatedAt);
-      
+
       const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(date);
       const m = parts.find(p => p.type === 'month')?.value;
       const y = parts.find(p => p.type === 'year')?.value;

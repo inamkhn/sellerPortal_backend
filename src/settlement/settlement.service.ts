@@ -9,15 +9,30 @@ export class SettlementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
-  ) {}
+  ) { }
 
   // ============== PAYOUT REQUEST HELPERS ==============
 
   /**
    * Check if current date is within payout window
-   * Payout windows: 15-16 (mid-month) and 30-31-1 (month-end)
+   * Can be disabled by admin via announcement system
    */
-  isPayoutWindowActive(): boolean {
+  async isPayoutWindowActive(): Promise<boolean> {
+    // Check if admin has disabled payout windows via announcement
+    const disableAnnouncement = await this.prisma.announcement.findFirst({
+      where: {
+        title: 'DISABLE_PAYOUT_WINDOWS',
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+      },
+    });
+
+    // If disabled announcement exists, return false
+    if (disableAnnouncement) {
+      return false;
+    }
+
+    // Otherwise, check date-based windows
     const now = new Date();
     const day = now.getDate();
     const month = now.getMonth();
@@ -52,14 +67,14 @@ export class SettlementService {
    * Calculate the next available payout date
    * Returns ISO string of next payout window start date
    */
-  getNextPayoutDate(): string {
+  async getNextPayoutDate(): Promise<string> {
     const now = new Date();
     const day = now.getDate();
     const month = now.getMonth();
     const year = now.getFullYear();
 
     // If currently in payout window, return current date
-    if (this.isPayoutWindowActive()) {
+    if (await this.isPayoutWindowActive()) {
       return now.toISOString();
     }
 
@@ -144,7 +159,7 @@ export class SettlementService {
     };
   }> {
     // 1. Check payout window
-    if (!this.isPayoutWindowActive()) {
+    if (!(await this.isPayoutWindowActive())) {
       throw new BadRequestException(
         'Payout requests are only available on 15-16 and 30-31-1 of each month',
       );

@@ -14,9 +14,7 @@ import {
 import { DetailedReportsQueryDto } from './dto/detailed-reports-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators';
-import { Role } from '@prisma/client';
 
 @Controller('analytics')
 @UseGuards(JwtAuthGuard, RolesGuard)

@@ -52,13 +52,13 @@ export class SettlementController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getPendingTotal(@GetUser() user: User) {
-    const [totalPending, hasRequestedToday] = await Promise.all([
-      this.settlementService.getPendingSettlementTotal(user.id),
-      this.settlementService.hasRequestedPayoutToday(user.id),
-    ]);
-
-    const canRequestPayout = this.settlementService.isPayoutWindowActive();
-    const nextPayoutDate = this.settlementService.getNextPayoutDate();
+    const [totalPending, hasRequestedToday, canRequestPayout, nextPayoutDate] =
+      await Promise.all([
+        this.settlementService.getPendingSettlementTotal(user.id),
+        this.settlementService.hasRequestedPayoutToday(user.id),
+        this.settlementService.isPayoutWindowActive(),
+        this.settlementService.getNextPayoutDate(),
+      ]);
 
     return {
       success: true,
