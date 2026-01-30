@@ -743,6 +743,7 @@ export class SettlementService {
             orderRequest: {
               select: {
                 id: true,
+                customerName: true,
                 decidedPrice: true,
                 status: true,
                 createdAt: true,

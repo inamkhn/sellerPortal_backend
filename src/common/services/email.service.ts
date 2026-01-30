@@ -553,4 +553,137 @@ export class EmailService {
       text,
     });
   }
+
+  async sendNewOrderNotificationEmail(
+    adminEmail: string,
+    adminName: string,
+    orderId: number,
+    customerName: string,
+    productInfo: string,
+    orderAmount: number,
+    sellerName: string,
+    orderType: 'EXISTING_PRODUCT' | 'CUSTOM_PRODUCT',
+    deliveryDate?: Date | null,
+  ): Promise<void> {
+    const formattedAmount = `AED ${Number(orderAmount).toFixed(2)}`;
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const formattedDeliveryDate = deliveryDate
+      ? new Date(deliveryDate).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+      : 'Not specified';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>New Order Created</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .order-details { 
+              background-color: #e9ecef; 
+              padding: 20px; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+              border-left: 4px solid #007bff;
+            }
+            .amount { 
+              font-size: 20px; 
+              font-weight: bold; 
+              color: #007bff; 
+              margin: 5px 0;
+            }
+            .badge {
+              display: inline-block;
+              padding: 5px 10px;
+              border-radius: 4px;
+              font-size: 12px;
+              font-weight: bold;
+              margin: 5px 0;
+            }
+            .badge-custom { background-color: #ffc107; color: #000; }
+            .badge-existing { background-color: #28a745; color: white; }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+            .info { background-color: #d1ecf1; border: 1px solid #bee5eb; padding: 15px; border-radius: 5px; margin: 15px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🛒 New Order Created</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${adminName},</p>
+              <div class="info">
+                <p><strong>A new order has been created in the system!</strong></p>
+              </div>
+              
+              <div class="order-details">
+                <h3>Order Details:</h3>
+                <p><strong>Order ID:</strong> #${orderId}</p>
+                <p><strong>Order Type:</strong> <span class="badge ${orderType === 'CUSTOM_PRODUCT' ? 'badge-custom' : 'badge-existing'}">${orderType === 'CUSTOM_PRODUCT' ? 'CUSTOM PRODUCT' : 'EXISTING PRODUCT'}</span></p>
+                <p><strong>Product:</strong> ${productInfo}</p>
+                <p><strong>Customer:</strong> ${customerName}</p>
+                <p><strong>Seller:</strong> ${sellerName}</p>
+                <p><strong>Order Amount:</strong></p>
+                <div class="amount">${formattedAmount}</div>
+                <p><strong>Created:</strong> ${currentDate}</p>
+                <p><strong>Delivery Date:</strong> ${formattedDeliveryDate}</p>
+                <p><strong>Status:</strong> <span style="color: #ffc107; font-weight: bold;">PENDING ⏳</span></p>
+              </div>
+              
+              <p>Please review this order in the admin dashboard and take necessary actions.</p>
+              <p>You can view the full order details and manage it from your admin panel.</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Hello ${adminName},
+      
+      A new order has been created in the system!
+      
+      Order Details:
+      - Order ID: #${orderId}
+      - Order Type: ${orderType === 'CUSTOM_PRODUCT' ? 'CUSTOM PRODUCT' : 'EXISTING PRODUCT'}
+      - Product: ${productInfo}
+      - Customer: ${customerName}
+      - Seller: ${sellerName}
+      - Order Amount: ${formattedAmount}
+      - Created: ${currentDate}
+      - Delivery Date: ${formattedDeliveryDate}
+      - Status: PENDING ⏳
+      
+      Please review this order in the admin dashboard and take necessary actions.
+      
+      © 2025 Furniture Marketplace. All rights reserved.
+      This is an automated notification. Please do not reply to this email.
+    `;
+
+    await this.sendEmail({
+      to: adminEmail,
+      subject: `New Order #${orderId} - ${orderType === 'CUSTOM_PRODUCT' ? 'Custom Product' : 'Existing Product'}`,
+      html,
+      text,
+    });
+  }
 }

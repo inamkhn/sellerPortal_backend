@@ -251,6 +251,64 @@ export class OrderRequestService {
               this.logger.log(
                 `Notifications sent for order request ${orderRequest.id}`,
               );
+
+              // 3. Send email notifications to all admin users
+              try {
+                const adminUsers = await this.prisma.user.findMany({
+                  where: { role: 'ADMIN' },
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                  },
+                });
+
+                const sellerName =
+                  `${completeOrder?.user?.firstName || ''} ${completeOrder?.user?.lastName || ''}`.trim() ||
+                  completeOrder?.user?.email ||
+                  'Unknown Seller';
+
+                // Send email to each admin
+                for (const admin of adminUsers) {
+                  try {
+                    const adminName =
+                      `${admin.firstName || ''} ${admin.lastName || ''}`.trim() ||
+                      admin.email;
+
+                    await this.emailService.sendNewOrderNotificationEmail(
+                      admin.email,
+                      adminName,
+                      orderRequest.id,
+                      createOrderRequestDto.customerName,
+                      productName,
+                      Number(createOrderRequestDto.decidedPrice),
+                      sellerName,
+                      createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT
+                        ? 'CUSTOM_PRODUCT'
+                        : 'EXISTING_PRODUCT',
+                      createOrderRequestDto.deliveryDate
+                        ? new Date(createOrderRequestDto.deliveryDate)
+                        : null,
+                    );
+
+                    this.logger.log(
+                      `Email sent to admin ${admin.email} for order ${orderRequest.id}`,
+                    );
+                  } catch (emailError) {
+                    this.logger.error(
+                      `Failed to send email to admin ${admin.email} for order ${orderRequest.id}`,
+                      emailError,
+                    );
+                    // Continue with next admin even if one fails
+                  }
+                }
+              } catch (error) {
+                this.logger.error(
+                  `Failed to fetch admin users or send emails for order ${orderRequest.id}`,
+                  error,
+                );
+              }
             } catch (error) {
               this.logger.error(
                 `Failed to send notifications for order ${orderRequest.id}`,
