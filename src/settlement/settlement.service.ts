@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
 import { SettlementQueryDto } from './dto';
+import { BulkPaymentResponseDto } from './dto/bulk-payment.dto';
 import { Prisma, SettlementStatus, SettlementType } from '@prisma/client';
 import { EmailService } from '../common/services/email.service';
 
@@ -982,5 +983,294 @@ export class SettlementService {
       },
       stats,
     };
+  }
+
+  // ============== BULK PAYMENT ==============
+
+  async getUserPendingSummary(userId: number) {
+    const pendingSettlements = await this.prisma.settlement.findMany({
+      where: {
+        userId,
+        status: SettlementStatus.PENDING,
+        settlementType: {
+          in: [SettlementType.SELLER_PAYMENT, SettlementType.REFERRAL_PAYMENT],
+        },
+      },
+      include: {
+        orderSettlement: {
+          include: {
+            orderRequest: {
+              select: {
+                id: true,
+                customerName: true,
+                decidedPrice: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const totalPending = pendingSettlements.reduce(
+      (sum, s) => sum + Number(s.amount),
+      0,
+    );
+
+    return {
+      userId,
+      totalPendingAmount: totalPending,
+      settlementCount: pendingSettlements.length,
+      settlements: pendingSettlements.map((s) => ({
+        id: s.id,
+        amount: Number(s.amount),
+        type: s.settlementType,
+        orderRequestId: s.orderSettlement.orderRequest.id,
+        customerName: s.orderSettlement.orderRequest.customerName,
+        createdAt: s.createdAt,
+      })),
+    };
+  }
+
+  async createBulkPayment(
+    userId: number,
+    paidAmount: number,
+    adminId: number,
+    notes?: string,
+    paymentProof?: string,
+    settlementIds?: number[],
+  ): Promise<BulkPaymentResponseDto> {
+    // Build where clause based on whether specific settlements are selected
+    const whereClause: any = {
+      userId,
+      status: SettlementStatus.PENDING,
+    };
+
+    if (settlementIds && settlementIds.length > 0) {
+      // If specific settlements selected, fetch only those
+      whereClause.id = { in: settlementIds };
+    } else {
+      // Otherwise, fetch all pending settlements (original behavior)
+      whereClause.settlementType = {
+        in: [SettlementType.SELLER_PAYMENT, SettlementType.REFERRAL_PAYMENT],
+      };
+    }
+
+    const pendingSettlements = await this.prisma.settlement.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (pendingSettlements.length === 0) {
+      throw new BadRequestException('No pending settlements for this user');
+    }
+
+    const totalPending = pendingSettlements.reduce(
+      (sum, s) => sum + Number(s.amount),
+      0,
+    );
+
+    if (paidAmount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than 0');
+    }
+
+    if (paidAmount > totalPending) {
+      throw new BadRequestException(
+        `Payment amount (${paidAmount}) exceeds total pending (${totalPending})`,
+      );
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      // Create bulk payment record
+      const bulkPayment = await tx.bulkPayment.create({
+        data: {
+          userId,
+          totalAmount: totalPending,
+          paidAmount,
+          remainingAmount: totalPending - paidAmount,
+          paymentProof,
+          notes,
+          paidAt: new Date(),
+          createdBy: adminId,
+        },
+      });
+
+      let remainingPayment = paidAmount;
+      const paidSettlements: any[] = [];
+      const remainingSettlements: any[] = [];
+
+      for (const settlement of pendingSettlements) {
+        const settlementAmount = Number(settlement.amount);
+
+        if (remainingPayment >= settlementAmount) {
+          // Fully pay this settlement
+          await tx.settlement.update({
+            where: { id: settlement.id },
+            data: {
+              status: SettlementStatus.PAID,
+              paidAt: new Date(),
+            },
+          });
+
+          await tx.bulkPaymentDistribution.create({
+            data: {
+              bulkPaymentId: bulkPayment.id,
+              settlementId: settlement.id,
+              amount: settlementAmount,
+            },
+          });
+
+          remainingPayment -= settlementAmount;
+
+          paidSettlements.push({
+            id: settlement.id,
+            amount: settlementAmount,
+            type: settlement.settlementType,
+            status: 'PAID',
+          });
+        } else if (remainingPayment > 0) {
+          // PARTIAL PAYMENT: Split the settlement
+          // 1. Update current settlement to the PAID amount
+          await tx.settlement.update({
+            where: { id: settlement.id },
+            data: {
+              amount: remainingPayment,
+              status: SettlementStatus.PAID,
+              paidAt: new Date(),
+              notes: settlement.notes
+                ? `${settlement.notes} (Partially paid via Bulk Payment #${bulkPayment.id})`
+                : `Partially paid via Bulk Payment #${bulkPayment.id}`,
+            },
+          });
+
+          // 2. Create distribution for the paid amount
+          await tx.bulkPaymentDistribution.create({
+            data: {
+              bulkPaymentId: bulkPayment.id,
+              settlementId: settlement.id,
+              amount: remainingPayment,
+            },
+          });
+
+          const remainingBalance = settlementAmount - remainingPayment;
+
+          // 3. Create NEW settlement for the remaining balance
+          await tx.settlement.create({
+            data: {
+              orderSettlementId: settlement.orderSettlementId,
+              userId: settlement.userId,
+              settlementType: settlement.settlementType,
+              amount: remainingBalance,
+              status: SettlementStatus.PENDING,
+              notes: settlement.notes
+                ? `${settlement.notes} (Remaining balance from Settlement #${settlement.id})`
+                : `Remaining balance from Settlement #${settlement.id}`,
+              paymentProof: settlement.paymentProof,
+            },
+          });
+
+          paidSettlements.push({
+            id: settlement.id,
+            amount: remainingPayment,
+            type: settlement.settlementType,
+            status: 'PAID (Partial)',
+          });
+
+          remainingSettlements.push({
+            id: 'NEW', // New ID not known yet without fetching
+            amount: remainingBalance,
+            type: settlement.settlementType,
+            status: 'PENDING',
+          });
+
+          remainingPayment = 0;
+        } else {
+          // Fully pending (no money left)
+          remainingSettlements.push({
+            id: settlement.id,
+            amount: settlementAmount,
+            type: settlement.settlementType,
+            status: 'PENDING',
+          });
+        }
+      }
+
+      // Populate user name
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          profile: { select: { fullName: true } },
+        },
+      });
+
+      const userName =
+        user?.profile?.fullName ||
+        `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+        user?.email ||
+        'Unknown User';
+
+      return {
+        id: bulkPayment.id,
+        userId,
+        userName,
+        totalPendingAmount: totalPending,
+        paidAmount,
+        remainingAmount: Number(totalPending) - Number(paidAmount),
+        settlementsUpdated: paidSettlements.length,
+        settlementsPaid: paidSettlements,
+        settlementsRemaining: remainingSettlements,
+        paymentProof,
+        paidAt: bulkPayment.paidAt.toISOString(),
+      };
+    });
+  }
+
+  async getBulkPaymentHistory(userId: number) {
+    const bulkPayments = await this.prisma.bulkPayment.findMany({
+      where: { userId },
+      include: {
+        admin: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        distributions: {
+          include: {
+            settlement: {
+              select: {
+                id: true,
+                amount: true,
+                settlementType: true,
+                orderSettlementId: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return bulkPayments.map((bp) => ({
+      id: bp.id,
+      totalAmount: Number(bp.totalAmount),
+      paidAmount: Number(bp.paidAmount),
+      remainingAmount: Number(bp.remainingAmount),
+      paymentProof: bp.paymentProof,
+      notes: bp.notes,
+      paidAt: bp.paidAt,
+      createdAt: bp.createdAt,
+      adminName: `${bp.admin.firstName} ${bp.admin.lastName}`,
+      settlementsCount: bp.distributions.length,
+      distributions: bp.distributions.map((d) => ({
+        settlementId: d.settlementId,
+        amount: Number(d.amount),
+        type: d.settlement.settlementType,
+      })),
+    }));
   }
 }

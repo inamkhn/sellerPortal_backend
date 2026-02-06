@@ -284,7 +284,8 @@ export class OrderRequestService {
                       productName,
                       Number(createOrderRequestDto.decidedPrice),
                       sellerName,
-                      createOrderRequestDto.orderType === OrderType.CUSTOM_PRODUCT
+                      createOrderRequestDto.orderType ===
+                        OrderType.CUSTOM_PRODUCT
                         ? 'CUSTOM_PRODUCT'
                         : 'EXISTING_PRODUCT',
                       createOrderRequestDto.deliveryDate

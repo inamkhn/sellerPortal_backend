@@ -10,4 +10,4 @@ import { SettlementModule } from '../settlement/settlement.module';
   providers: [DashboardService],
   exports: [DashboardService],
 })
-export class DashboardModule { }
+export class DashboardModule {}

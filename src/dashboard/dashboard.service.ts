@@ -8,7 +8,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlementService: SettlementService,
-  ) { }
+  ) {}
 
   async getOverview(
     userId: number,
@@ -595,12 +595,22 @@ export class DashboardService {
       const d = new Date(startDate);
       d.setMonth(d.getMonth() + i);
 
-      const monthKey = d.toLocaleString('default', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).replace(' ', '-');
+      const monthKey = d
+        .toLocaleString('default', {
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'Asia/Karachi',
+        })
+        .replace(' ', '-');
       // The format needed is "Jan-2024" but toLocaleString might give "Jan 2024" or "Jan 2024" depending on locale.
       // Let's stick to the previous manual construction but using parts extracted with timezone
-      const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(d);
-      const m = parts.find(p => p.type === 'month')?.value;
-      const y = parts.find(p => p.type === 'year')?.value;
+      const parts = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Karachi',
+      }).formatToParts(d);
+      const m = parts.find((p) => p.type === 'month')?.value;
+      const y = parts.find((p) => p.type === 'year')?.value;
       const key = `${m}-${y}`;
 
       monthlyRevenue.set(key, 0);
@@ -612,9 +622,13 @@ export class DashboardService {
     orders.forEach((order) => {
       const date = new Date(order.updatedAt);
 
-      const parts = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric', timeZone: 'Asia/Karachi' }).formatToParts(date);
-      const m = parts.find(p => p.type === 'month')?.value;
-      const y = parts.find(p => p.type === 'year')?.value;
+      const parts = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Karachi',
+      }).formatToParts(date);
+      const m = parts.find((p) => p.type === 'month')?.value;
+      const y = parts.find((p) => p.type === 'year')?.value;
       const monthKey = `${m}-${y}`;
 
       const currentRevenue = monthlyRevenue.get(monthKey) || 0;

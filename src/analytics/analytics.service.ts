@@ -17,7 +17,7 @@ import { OrderStatus, Role } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // Calculate date ranges based on selection
   private calculateDateRange(dateRange: DateRange): DateRangeResult {
@@ -276,7 +276,7 @@ export class AnalyticsService {
       } else if (dateRange === DateRange.NINETY_DAYS) {
         const weekNum = Math.floor(
           (date.getTime() - orders[0].createdAt.getTime()) /
-          (7 * 24 * 60 * 60 * 1000),
+            (7 * 24 * 60 * 60 * 1000),
         );
         key = `Week ${weekNum + 1}`;
       } else {
@@ -392,7 +392,10 @@ export class AnalyticsService {
         categoryName = order.product.category.name;
       }
       // For custom products, get category from customProducts[0].category
-      else if (order.isCustomProduct && order.customProducts?.[0]?.category?.name) {
+      else if (
+        order.isCustomProduct &&
+        order.customProducts?.[0]?.category?.name
+      ) {
         categoryName = order.customProducts[0].category.name;
       }
 
@@ -733,10 +736,11 @@ export class AnalyticsService {
     // Step 4: Format data and maintain sort order
     const data = paginatedSellers.map((sellerRevenue) => {
       const user = users.find((u) => u.id === sellerRevenue.userId);
-      const commission = user?.settlements.reduce(
-        (sum, settlement) => sum + Number(settlement.amount),
-        0,
-      ) || 0;
+      const commission =
+        user?.settlements.reduce(
+          (sum, settlement) => sum + Number(settlement.amount),
+          0,
+        ) || 0;
 
       return {
         id: sellerRevenue.userId,

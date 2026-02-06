@@ -37,6 +37,8 @@ model User {
   referralsMade              Referral[]        @relation("ReferrerRelation")
   settlements                Settlement[]
   factoryPaymentActions      FactoryPaymentHistory[]
+  bulkPayments               BulkPayment[]
+  bulkPaymentsCreated        BulkPayment[]     @relation("BulkPaymentAdmin")
 
   @@index([email])
   @@index([googleId])
@@ -247,6 +249,7 @@ model Settlement {
   updatedAt         DateTime         @updatedAt @map("updated_at")
   orderSettlement   OrderSettlement  @relation(fields: [orderSettlementId], references: [id], onDelete: Cascade)
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bulkPaymentDistributions BulkPaymentDistribution[]
 
   @@index([orderSettlementId])
   @@index([userId])
@@ -470,4 +473,41 @@ enum AnnouncementPriority {
   URGENT
 
   @@map("announcement_priority")
+}
+
+model BulkPayment {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  totalAmount     Decimal   @db.Decimal(10, 2) @map("total_amount")
+  paidAmount      Decimal   @db.Decimal(10, 2) @map("paid_amount")
+  remainingAmount Decimal   @default(0) @db.Decimal(10, 2) @map("remaining_amount")
+  paymentProof    String?   @map("payment_proof")
+  notes           String?
+  paidAt          DateTime  @map("paid_at")
+  createdBy       Int       @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  user            User      @relation(fields: [userId], references: [id])
+  admin           User      @relation("BulkPaymentAdmin", fields: [createdBy], references: [id])
+  distributions   BulkPaymentDistribution[]
+
+  @@index([userId])
+  @@index([createdBy])
+  @@index([paidAt])
+  @@map("bulk_payments")
+}
+
+model BulkPaymentDistribution {
+  id              Int          @id @default(autoincrement())
+  bulkPaymentId   Int          @map("bulk_payment_id")
+  settlementId    Int          @map("settlement_id")
+  amount          Decimal      @db.Decimal(10, 2)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  
+  bulkPayment     BulkPayment  @relation(fields: [bulkPaymentId], references: [id], onDelete: Cascade)
+  settlement      Settlement   @relation(fields: [settlementId], references: [id])
+
+  @@index([bulkPaymentId])
+  @@index([settlementId])
+  @@map("bulk_payment_distributions")
 }

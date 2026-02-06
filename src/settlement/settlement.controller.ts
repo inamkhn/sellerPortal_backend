@@ -25,6 +25,7 @@ import {
   CreateSettlementDto,
   UpdateSettlementDto,
 } from './dto';
+import { CreateBulkPaymentDto } from './dto/bulk-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators';
 import { User, SettlementStatus } from '@prisma/client';
@@ -357,5 +358,112 @@ export class SettlementController {
     }
 
     return this.settlementService.update(+id, user.id, user.role, updateData);
+  }
+
+  @Get('user/:userId/pending-summary')
+  @ApiOperation({
+    summary: 'Get user pending settlement summary (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pending settlement summary retrieved',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async getUserPendingSummary(
+    @GetUser() user: User,
+    @Param('userId') userId: string,
+  ) {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Only admins can view pending settlement summary',
+      );
+    }
+    return this.settlementService.getUserPendingSummary(+userId);
+  }
+
+  @Post('bulk-payment')
+  @UseInterceptors(
+    FileInterceptor('paymentProof', {
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+      fileFilter: (req, file, callback) => {
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'image/jpg',
+          'application/pdf',
+        ];
+        if (allowedMimeTypes.includes(file.mimetype)) {
+          callback(null, true);
+        } else {
+          callback(
+            new Error(
+              'Invalid file type. Only JPEG, PNG, WebP images and PDF files are allowed.',
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  @ApiOperation({
+    summary: 'Process bulk payment for a user (Admin only)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 201,
+    description: 'Bulk payment processed successfully',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async createBulkPayment(
+    @GetUser() user: User,
+    @Body() createDto: CreateBulkPaymentDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException('Only admins can process bulk payments');
+    }
+
+    let paymentProofUrl: string | undefined;
+
+    if (file) {
+      const uploadResult = await this.uploadService.uploadImage(
+        file,
+        'settlements/bulk-payment-proofs',
+      );
+      paymentProofUrl = uploadResult.secure_url;
+    } else if (createDto.paymentProof) {
+      paymentProofUrl = createDto.paymentProof;
+    }
+
+    return this.settlementService.createBulkPayment(
+      +createDto.userId,
+      +createDto.paidAmount,
+      user.id,
+      createDto.notes,
+      paymentProofUrl,
+      createDto.settlementIds,
+    );
+  }
+
+  @Get('bulk-payments/:userId')
+  @ApiOperation({
+    summary: 'Get bulk payment history for a user (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk payment history retrieved',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async getBulkPaymentHistory(
+    @GetUser() user: User,
+    @Param('userId') userId: string,
+  ) {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException('Only admins can view bulk payment history');
+    }
+    return this.settlementService.getBulkPaymentHistory(+userId);
   }
 }

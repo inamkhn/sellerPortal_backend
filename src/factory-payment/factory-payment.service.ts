@@ -4,7 +4,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class FactoryPaymentService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Get summary of factory payments
@@ -15,7 +15,7 @@ export class FactoryPaymentService {
     const deliveredOrders = await this.prisma.orderRequest.findMany({
       where: { status: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } },
       include: {
-        orderSettlements: true, 
+        orderSettlements: true,
       },
     });
 
