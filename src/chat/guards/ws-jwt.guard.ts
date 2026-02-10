@@ -12,11 +12,6 @@ export class WsJwtGuard implements CanActivate {
       const client: Socket = context.switchToWs().getClient<Socket>();
       const token = this.extractTokenFromHandshake(client);
 
-      console.log(
-        'WsJwtGuard: Token extracted:',
-        token ? 'Token exists' : 'No token',
-      );
-
       if (!token) {
         console.error('WsJwtGuard: No token provided');
         throw new WsException('Unauthorized: No token provided');
@@ -26,7 +21,6 @@ export class WsJwtGuard implements CanActivate {
         secret: process.env.JWT_SECRET,
       });
 
-      console.log('WsJwtGuard: Token verified successfully. Payload:', payload);
 
       // Attach user to socket for later use
       // Map JWT payload to user object expected by gateway
@@ -38,7 +32,6 @@ export class WsJwtGuard implements CanActivate {
         role: payload.role,
       };
 
-      console.log('WsJwtGuard: User attached to socket:', client.data.user);
       return true;
     } catch (error) {
       console.error('WsJwtGuard: Token verification failed:', error.message);

@@ -25,8 +25,9 @@ model User {
   emailVerificationOtp       String?           @map("email_verification_otp")
   passwordResetExpiry        DateTime?         @map("password_reset_expiry")
   passwordResetOtp           String?           @map("password_reset_otp")
-  sentMessages               ChatMessage[]
-  chatParticipants           ChatParticipant[]
+  groupParticipants          GroupParticipant[]
+  sentGroupMessages          GroupMessage[]     @relation("SentGroupMessages")
+  pinnedGroupMessages        GroupMessage[]     @relation("PinnedGroupMessages")
   notifications              Notification[]
   orderRequests              OrderRequest[]
   orderSettlementsAsReferrer OrderSettlement[] @relation("OrderReferrerSettlements")
@@ -255,67 +256,76 @@ model Settlement {
   @@map("settlements")
 }
 
-model ChatRoom {
-  id            Int               @id @default(autoincrement())
-  type          ChatRoomType      @default(DIRECT)
-  referralId    Int?              @map("referral_id")
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
-  lastMessageAt DateTime?         @map("last_message_at")
-  messages      ChatMessage[]
-  participants  ChatParticipant[]
+model GroupChat {
+  id            Int                @id @default(autoincrement())
+  name          String             @default("Global Chat")
+  description   String?
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  lastMessageAt DateTime?          @map("last_message_at")
+  
+  messages      GroupMessage[]
+  participants  GroupParticipant[]
 
-  @@index([type])
-  @@index([lastMessageAt])
-  @@index([referralId])
-  @@map("chat_rooms")
+  @@map("group_chat")
 }
 
-model ChatParticipant {
-  id          Int       @id @default(autoincrement())
-  chatRoomId  Int       @map("chat_room_id")
-  userId      Int       @map("user_id")
-  unreadCount Int       @default(0) @map("unread_count")
-  lastReadAt  DateTime? @map("last_read_at")
-  isArchived  Boolean   @default(false) @map("is_archived")
-  isMuted     Boolean   @default(false) @map("is_muted")
-  joinedAt    DateTime  @default(now()) @map("joined_at")
-  chatRoom    ChatRoom  @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+model GroupParticipant {
+  id          Int        @id @default(autoincrement())
+  groupChatId Int        @map("group_chat_id")
+  userId      Int        @map("user_id")
+  unreadCount Int        @default(0) @map("unread_count")
+  lastReadAt  DateTime?  @map("last_read_at")
+  isMuted     Boolean    @default(false) @map("is_muted")
+  joinedAt    DateTime   @default(now()) @map("joined_at")
+  
+  groupChat   GroupChat  @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([chatRoomId, userId])
+  @@unique([groupChatId, userId])
   @@index([userId])
-  @@index([chatRoomId])
-  @@index([unreadCount])
-  @@index([isArchived])
-  @@map("chat_participants")
+  @@index([groupChatId])
+  @@map("group_participants")
 }
 
-model ChatMessage {
+model GroupMessage {
   id          Int           @id @default(autoincrement())
-  chatRoomId  Int           @map("chat_room_id")
+  groupChatId Int           @map("group_chat_id")
   senderId    Int           @map("sender_id")
   content     String?
-  messageType MessageType   @default(TEXT)
+  messageType MessageType   @default(TEXT) @map("message_type")
+  
+  // File attachments
   fileUrl     String?       @map("file_url")
   fileName    String?       @map("file_name")
   fileSize    Int?          @map("file_size")
   mimeType    String?       @map("mime_type")
-  duration    Int?          @map("duration")
-  status      MessageStatus @default(SENT)
-  isEdited    Boolean       @default(false) @map("is_edited")
+  
+  // Enhanced features
+  isPinned    Boolean       @default(false) @map("is_pinned")
+  pinnedBy    Int?          @map("pinned_by")
+  pinnedAt    DateTime?     @map("pinned_at")
+  reactions   Json?         @map("reactions")
+  replyToId   Int?          @map("reply_to_id")
+  
+  // Soft delete
   isDeleted   Boolean       @default(false) @map("is_deleted")
   deletedAt   DateTime?     @map("deleted_at")
+  
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
-  chatRoom    ChatRoom      @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
-  sender      User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  
+  groupChat   GroupChat     @relation(fields: [groupChatId], references: [id], onDelete: Cascade)
+  sender      User          @relation("SentGroupMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  pinner      User?         @relation("PinnedGroupMessages", fields: [pinnedBy], references: [id])
+  replyTo     GroupMessage? @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies     GroupMessage[] @relation("MessageReplies")
 
-  @@index([chatRoomId, createdAt])
+  @@index([groupChatId, createdAt])
   @@index([senderId])
-  @@index([status])
   @@index([isDeleted])
-  @@map("chat_messages")
+  @@index([isPinned])
+  @@map("group_messages")
 }
 
 model Notification {
@@ -423,32 +433,14 @@ enum SettlementType {
   @@map("settlement_type")
 }
 
-enum ChatRoomType {
-  DIRECT
-  ADMIN_SUPPORT
-  MANAGER_SUPPORT
-
-  @@map("chat_room_type")
-}
-
 enum MessageType {
   TEXT
   IMAGE
   VIDEO
   DOCUMENT
-  AUDIO
-  VOICE_NOTE
   FILE
 
   @@map("message_type")
-}
-
-enum MessageStatus {
-  SENT
-  DELIVERED
-  READ
-
-  @@map("message_status")
 }
 
 enum NotificationType {

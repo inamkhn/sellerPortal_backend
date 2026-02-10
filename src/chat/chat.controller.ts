@@ -13,7 +13,9 @@ import {
   HttpStatus,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -28,312 +30,238 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { ChatRoomFiltersDto, SendMessageDto, GetMessagesDto } from './dto';
+import {
+  SendMessageDto,
+  GetMessagesDto,
+  AddReactionDto,
+  GlobalChatInfoResponseDto,
+  GetMessagesResponseDto,
+  GroupMessageDto,
+  MarkAsReadResponseDto,
+  DeleteMessageResponseDto,
+  ReactionResponseDto,
+} from './dto';
 
 @ApiTags('Chat')
 @ApiBearerAuth()
-@Controller('chat')
+@Controller('chat/global')
 @UseGuards(JwtAuthGuard)
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(private readonly chatService: ChatService) { }
 
-  @Get('rooms')
-  @ApiOperation({ summary: 'Get user chat rooms' })
+  @Get()
+  @ApiOperation({ summary: 'Get global chat info' })
   @ApiResponse({
     status: 200,
-    description: 'Chat rooms retrieved successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'array' },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-        totalPages: { type: 'number' },
-      },
-    },
+    description: 'Global chat info retrieved',
+    type: GlobalChatInfoResponseDto,
   })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getUserChatRooms(
-    @CurrentUser() user: User,
-    @Query() filters: ChatRoomFiltersDto,
-  ) {
-    return this.chatService.getUserChatRooms(user.id, filters);
+  async getGlobalChat(@CurrentUser() user: User): Promise<GlobalChatInfoResponseDto> {
+    // @ts-expect-error - Prisma returns compatible types but TypeScript can't infer
+    return this.chatService.getGlobalChatInfo(user.id);
   }
 
-  @Get('rooms/:id')
-  @ApiOperation({ summary: 'Get chat room details' })
-  @ApiResponse({ status: 200, description: 'Chat room details retrieved' })
-  @ApiResponse({ status: 404, description: 'Chat room not found' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  async getChatRoomDetails(
-    @CurrentUser() user: User,
-    @Param('id', ParseIntPipe) roomId: number,
-  ) {
-    return this.chatService.getChatRoomDetails(roomId, user.id);
-  }
-
-  @Get('rooms/:id/messages')
-  @ApiOperation({ summary: 'Get chat room messages with cursor pagination' })
+  @Get('messages')
+  @ApiOperation({ summary: 'Get global chat messages with cursor pagination' })
   @ApiResponse({
     status: 200,
     description: 'Messages retrieved successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'array' },
-        hasMore: { type: 'boolean' },
-        nextCursor: { type: 'number', nullable: true },
-      },
-    },
+    type: GetMessagesResponseDto,
   })
-  @ApiResponse({ status: 403, description: 'Access denied to this chat room' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMessages(
     @CurrentUser() user: User,
-    @Param('id', ParseIntPipe) roomId: number,
     @Query() dto: GetMessagesDto,
-  ) {
-    return this.chatService.getMessages(roomId, user.id, dto.cursor, dto.limit);
+  ): Promise<GetMessagesResponseDto> {
+    // @ts-expect-error - Prisma JsonValue is compatible with Record<string, number[]>
+    return this.chatService.getGlobalChatMessages(user.id, dto.cursor, dto.limit);
   }
 
-  @Post('rooms/:id/messages')
-  @ApiOperation({ summary: 'Send a text message to a chat room' })
-  @ApiResponse({ status: 201, description: 'Message sent successfully' })
-  @ApiResponse({ status: 403, description: 'Access denied to this chat room' })
-  @ApiResponse({ status: 400, description: 'Invalid message data' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async sendMessage(
-    @CurrentUser() user: User,
-    @Param('id', ParseIntPipe) roomId: number,
-    @Body() dto: SendMessageDto,
-  ) {
-    return this.chatService.sendMessage(
-      roomId,
-      user.id,
-      dto.content || '',
-      dto.messageType,
-    );
-  }
-
-  @Post('rooms/:id/messages/upload')
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Send a message with file attachment' })
-  @ApiResponse({ status: 201, description: 'Message with file sent' })
-  @ApiResponse({ status: 403, description: 'Access denied' })
-  @ApiResponse({ status: 400, description: 'Invalid file' })
-  async sendMessageWithFile(
-    @CurrentUser() user: User,
-    @Param('id', ParseIntPipe) roomId: number,
-    @UploadedFile() file: Express.Multer.File,
-    @Body('content') content?: string,
-  ) {
-    if (!file) {
-      throw new Error('No file provided');
-    }
-
-    // Determine message type based on file mimetype
-    let messageType = 'FILE';
-    if (file.mimetype.startsWith('image/')) {
-      messageType = 'IMAGE';
-    } else if (file.mimetype.startsWith('video/')) {
-      messageType = 'VIDEO';
-    } else if (file.mimetype.startsWith('audio/')) {
-      messageType = 'AUDIO';
-    } else if (
-      file.mimetype === 'application/pdf' ||
-      file.mimetype.includes('document')
-    ) {
-      messageType = 'DOCUMENT';
-    }
-
-    return this.chatService.sendMessageWithFile(
-      roomId,
-      user.id,
-      file,
-      content || '',
-      messageType,
-    );
-  }
-
-  @Get('admin/support')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @ApiOperation({
-    summary: 'Get admin support chats (optimized with batch queries)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Admin support chats retrieved successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'array' },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-        totalPages: { type: 'number' },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
-  async getAdminSupportChats(
-    @CurrentUser() user: User,
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 20,
-  ) {
-    return this.chatService.getAdminSupportChats(user.id, page, limit);
-  }
-
-  @Get('manager/support')
-  @UseGuards(RolesGuard)
-  @Roles('REFERRAL_MANAGER')
-  @ApiOperation({
-    summary: 'Get manager support chats with referral stats (optimized)',
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Manager support chats retrieved successfully with order statistics',
-    schema: {
-      type: 'object',
-      properties: {
-        data: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'number' },
-              type: { type: 'string' },
-              unreadCount: { type: 'number' },
-              referralStats: {
-                type: 'object',
-                properties: {
-                  totalOrders: { type: 'number' },
-                  totalRevenue: { type: 'number' },
-                },
-              },
-            },
-          },
-        },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-        totalPages: { type: 'number' },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Manager role required',
-  })
-  async getManagerSupportChats(
-    @CurrentUser() user: User,
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 20,
-  ) {
-    return this.chatService.getManagerSupportChats(user.id, page, limit);
-  }
-
-  @Get('admin/users')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @ApiOperation({
-    summary: 'Get all users for admin chat directory with search',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Users retrieved successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'array' },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-        totalPages: { type: 'number' },
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
-  async getAllUsersForAdmin(
-    @CurrentUser() user: User,
-    @Query('page', ParseIntPipe) page: number = 1,
-    @Query('limit', ParseIntPipe) limit: number = 50,
-    @Query('search') search?: string,
-    @Query('role') role?: string,
-  ) {
-    return this.chatService.getAllUsersForAdmin(page, limit, search, role);
-  }
-
-  @Post('admin/initiate/:userId')
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @ApiOperation({
-    summary: 'Admin initiates or retrieves existing chat with a user',
-  })
+  @Post('messages')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 messages per minute
+  @ApiOperation({ summary: 'Send a text message to global chat' })
   @ApiResponse({
     status: 201,
-    description: 'Chat room created or retrieved successfully',
+    description: 'Message sent successfully',
+    type: GroupMessageDto,
   })
-  @ApiResponse({ status: 404, description: 'User not found' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
-  async adminInitiateChat(
+  @HttpCode(HttpStatus.CREATED)
+  async sendMessage(
+    @CurrentUser() user: User,
+    @Body() dto: SendMessageDto,
+  ): Promise<GroupMessageDto> {
+    // @ts-expect-error - Prisma JsonValue is compatible with Record<string, number[]>
+    return this.chatService.sendGlobalMessage(
+      user.id,
+      dto.content,
+      dto.messageType || 'TEXT',
+      dto.replyToId,
+    );
+  }
+
+  @Post('messages/upload')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 file uploads per minute
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB max file size
+      },
+      fileFilter: (req, file, cb) => {
+        // Whitelist of allowed MIME types
+        const allowedMimes = [
+          // Images
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'image/svg+xml',
+          // Videos
+          'video/mp4',
+          'video/webm',
+          'video/quicktime',
+          // Documents
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          // Text files
+          'text/plain',
+          'text/csv',
+        ];
+
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `File type ${file.mimetype} is not allowed. Allowed types: images, videos, documents, and text files.`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Send a message with file attachment' })
+  @ApiResponse({
+    status: 201,
+    description: 'Message with file sent',
+    type: GroupMessageDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - file missing, too large, or invalid type',
+  })
+  @HttpCode(HttpStatus.CREATED)
+  async sendMessageWithFile(
+    @CurrentUser() user: User,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('content') content?: string,
+    @Body('replyToId') replyToId?: number,
+  ): Promise<GroupMessageDto> {
+    // Validate file exists
+    if (!file) {
+      throw new BadRequestException('No file provided');
+    }
+
+    // @ts-expect-error - Prisma JsonValue is compatible with Record<string, number[]>
+    return this.chatService.sendGlobalMessageWithFile(
+      user.id,
+      file,
+      content,
+      replyToId ? Number(replyToId) : undefined,
+    );
+  }
+
+  @Patch('messages/read')
+  @ApiOperation({ summary: 'Mark all messages as read' })
+  @ApiResponse({
+    status: 200,
+    description: 'Messages marked as read',
+    type: MarkAsReadResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  async markAsRead(@CurrentUser() user: User): Promise<MarkAsReadResponseDto> {
+    return this.chatService.markMessagesAsRead(user.id);
+  }
+
+  @Delete('messages/:id')
+  @ApiOperation({ summary: 'Delete a message (soft delete)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Message deleted',
+    type: DeleteMessageResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Can only delete own messages' })
+  async deleteMessage(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) messageId: number,
+  ): Promise<DeleteMessageResponseDto> {
+    return this.chatService.deleteMessage(messageId, user.id);
+  }
+
+  @Get('pinned')
+  @ApiOperation({ summary: 'Get all pinned messages' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pinned messages retrieved',
+    type: [GroupMessageDto],
+  })
+  async getPinnedMessages(@CurrentUser() user: User): Promise<GroupMessageDto[]> {
+    // @ts-expect-error - Prisma JsonValue is compatible with Record<string, number[]>
+    return this.chatService.getPinnedMessages();
+  }
+
+  @Patch('messages/:id/pin')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 pin toggles per minute
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Toggle pin status of a message (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pin status toggled',
+    type: GroupMessageDto,
+  })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
+  async togglePinMessage(
     @CurrentUser() admin: User,
-    @Param('userId', ParseIntPipe) userId: number,
-  ) {
-    return this.chatService.adminInitiateChat(admin.id, userId);
+    @Param('id', ParseIntPipe) messageId: number,
+  ): Promise<GroupMessageDto> {
+    // @ts-expect-error - Prisma JsonValue is compatible with Record<string, number[]>
+    return this.chatService.togglePinMessage(messageId, admin.id);
   }
 
-  @Get('manager/admin-chat')
-  @UseGuards(RolesGuard)
-  @Roles('REFERRAL_MANAGER')
-  @ApiOperation({ summary: 'Get or create manager chat with admin support' })
+  @Post('messages/:id/reactions')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 reactions per minute
+  @ApiOperation({ summary: 'Add reaction to a message' })
   @ApiResponse({
     status: 200,
-    description: 'Admin chat retrieved or created successfully',
+    description: 'Reaction added',
+    type: ReactionResponseDto,
   })
-  @ApiResponse({ status: 404, description: 'No admin available' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({
-    status: 403,
-    description: 'Forbidden - Manager role required',
-  })
-  async getManagerAdminChat(@CurrentUser() manager: User) {
-    return this.chatService.getOrCreateManagerAdminChat(manager.id);
+  async addReaction(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) messageId: number,
+    @Body() dto: AddReactionDto,
+  ): Promise<ReactionResponseDto> {
+    return this.chatService.addReaction(messageId, user.id, dto.emoji);
   }
 
-  @Get('user/admin-chat')
-  @UseGuards(RolesGuard)
-  @Roles('USER', 'REFERRAL_MANAGER')
-  @ApiOperation({ summary: 'Get or create user chat with admin support' })
+  @Delete('messages/:id/reactions/:emoji')
+  @ApiOperation({ summary: 'Remove reaction from a message' })
   @ApiResponse({
     status: 200,
-    description: 'Admin chat retrieved or created successfully',
+    description: 'Reaction removed',
+    type: ReactionResponseDto,
   })
-  @ApiResponse({ status: 404, description: 'No admin available' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getUserAdminChat(@CurrentUser() user: User) {
-    return this.chatService.getOrCreateUserAdminChat(user.id);
-  }
-
-  @Get('user/manager-chat')
-  @UseGuards(RolesGuard)
-  @Roles('USER')
-  @ApiOperation({
-    summary: 'Get or create user chat with their referral manager',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Manager chat retrieved or created',
-  })
-  @ApiResponse({ status: 404, description: 'No referral manager found' })
-  async getUserManagerChat(@CurrentUser() user: User) {
-    return this.chatService.getOrCreateUserManagerChat(user.id);
+  async removeReaction(
+    @CurrentUser() user: User,
+    @Param('id', ParseIntPipe) messageId: number,
+    @Param('emoji') emoji: string,
+  ): Promise<ReactionResponseDto> {
+    return this.chatService.removeReaction(messageId, user.id, emoji);
   }
 }
