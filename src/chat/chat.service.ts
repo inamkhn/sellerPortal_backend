@@ -118,6 +118,22 @@ export class ChatService {
             avatar: true,
           },
         },
+        replyTo: {
+          select: {
+            id: true,
+            content: true,
+            senderId: true,
+            messageType: true,
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: safeLimit + 1,
@@ -400,8 +416,34 @@ export class ChatService {
       throw new NotFoundException('Message not found');
     }
 
-    if (message.senderId !== userId) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (message.senderId !== userId && user.role !== 'ADMIN') {
       throw new ForbiddenException('You can only delete your own messages');
+    }
+
+    if (message.fileUrl) {
+      // Extract public ID from URL
+      const publicId = this.uploadService.extractPublicId(message.fileUrl);
+      if (publicId) {
+        // Delete from Cloudinary (don't block if fails)
+        try {
+          // If it's a video or raw file, resource_type needs to be specified for Cloudinary
+          // The current uploadService.deleteImage assumes 'image' resource type by default
+          // We might need to enhance deleteImage or just try deleting
+          await this.uploadService.deleteImage(publicId);
+        } catch (error) {
+          console.error(`Failed to delete file for message ${messageId}:`, error);
+          // Continue with message deletion even if file deletion fails
+        }
+      }
     }
 
     await this.prisma.groupMessage.update({
@@ -409,6 +451,9 @@ export class ChatService {
       data: {
         isDeleted: true,
         deletedAt: new Date(),
+        // Optional: Clear file fields to prevent access if soft deleted?
+        // keeping them might be useful for history/debugging
+        // fileUrl: null, 
       },
     });
 
