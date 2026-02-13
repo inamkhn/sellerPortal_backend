@@ -29,4 +29,4 @@ import { UploadModule } from '../upload/upload.module';
   providers: [ChatService, ChatGateway, WsJwtGuard],
   exports: [ChatService, ChatGateway],
 })
-export class ChatModule { }
+export class ChatModule {}
