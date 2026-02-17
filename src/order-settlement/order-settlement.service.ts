@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../common/services/email.service';
 import {
   CreateSettlementDto,
   UpdateSettlementDto,
@@ -28,7 +29,8 @@ export class OrderSettlementService {
   constructor(
     private readonly database: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+    private readonly emailService: EmailService,
+  ) { }
 
   /**
    * Create/Update OrderSettlement and create Settlement records (Admin fills in amounts and creates payment records)
@@ -352,6 +354,36 @@ export class OrderSettlementService {
       }).format(amount);
     };
 
+    // Fetch referral manager details for email
+    const referralManager = await this.database.user.findUnique({
+      where: { id: referralManagerId },
+      select: {
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    // Fetch seller details from order request
+    const orderRequest = await this.database.orderRequest.findUnique({
+      where: { id: orderSettlement.orderRequestId },
+      select: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    const sellerName = orderRequest?.user
+      ? `${orderRequest.user.firstName || ''} ${orderRequest.user.lastName || ''}`.trim() ||
+      orderRequest.user.email
+      : 'Unknown Seller';
+
+    // Send in-app notification
     await this.notificationsService.createNotification({
       userId: referralManagerId,
       type: NotificationType.SETTLEMENT_UPDATE,
@@ -366,6 +398,30 @@ export class OrderSettlementService {
         requiresAction: true,
       },
     });
+
+    // Send email notification
+    if (referralManager?.email) {
+      const managerName =
+        `${referralManager.firstName || ''} ${referralManager.lastName || ''}`.trim() ||
+        'Referral Manager';
+
+      try {
+        await this.emailService.sendReferralManagerSettlementPendingEmail(
+          referralManager.email,
+          managerName,
+          orderSettlement.orderRequestId,
+          grossSellerAmount,
+          sellerName,
+          orderSettlement.id,
+        );
+      } catch (error) {
+        // Log error but don't fail the settlement creation
+        console.error(
+          `Failed to send email to referral manager ${referralManagerId}:`,
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -456,7 +512,7 @@ export class OrderSettlementService {
       const referrer = settlement.orderRequest?.user?.profile?.referrer;
       const referrerName = referrer
         ? `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
-          referrer.email
+        referrer.email
         : null;
 
       return {

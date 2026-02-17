@@ -366,9 +366,9 @@ export class EmailService {
                 <p><strong>Amount:</strong></p>
                 <div class="amount">${formattedAmount}</div>
                 <p><strong>Payment Type:</strong> ${settlementType
-                  .replace('_', ' ')
-                  .toLowerCase()
-                  .replace(/\b\w/g, (l) => l.toUpperCase())}</p>
+        .replace('_', ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (l) => l.toUpperCase())}</p>
                 <p><strong>Settlement ID:</strong> #${settlementId}</p>
                 <p><strong>Payment Date:</strong> ${currentDate}</p>
               </div>
@@ -435,20 +435,20 @@ export class EmailService {
 
     const config = isReferralManager
       ? {
-          subject:
-            'Order Delivered - Referral Customer - Furniture Marketplace',
-          title: 'Order Delivered - Referral Customer',
-          description: `Great news! An order from your referral customer has been successfully delivered.`,
-          icon: '🎯',
-          recipientType: 'Referral Manager',
-        }
+        subject:
+          'Order Delivered - Referral Customer - Furniture Marketplace',
+        title: 'Order Delivered - Referral Customer',
+        description: `Great news! An order from your referral customer has been successfully delivered.`,
+        icon: '🎯',
+        recipientType: 'Referral Manager',
+      }
       : {
-          subject: 'Order Delivered Successfully - Furniture Marketplace',
-          title: 'Order Delivered Successfully',
-          description: 'Your order has been delivered successfully!',
-          icon: '📦',
-          recipientType: 'Customer',
-        };
+        subject: 'Order Delivered Successfully - Furniture Marketplace',
+        title: 'Order Delivered Successfully',
+        description: 'Your order has been delivered successfully!',
+        icon: '📦',
+        recipientType: 'Customer',
+      };
 
     const html = `
       <!DOCTYPE html>
@@ -500,15 +500,13 @@ export class EmailService {
                 <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">DELIVERED ✅</span></p>
               </div>
               
-              ${
-                isReferralManager
-                  ? `<p>This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.</p>`
-                  : `<p>Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.</p>`
-              }
+              ${isReferralManager
+        ? `<p>This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.</p>`
+        : `<p>Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.</p>`
+      }
               
-              <p>If you have any questions about this ${
-                isReferralManager ? 'referral order' : 'order'
-              }, please contact our support team.</p>
+              <p>If you have any questions about this ${isReferralManager ? 'referral order' : 'order'
+      }, please contact our support team.</p>
             </div>
             <div class="footer">
               <p>© 2025 Furniture Marketplace. All rights reserved.</p>
@@ -532,14 +530,12 @@ export class EmailService {
       - Delivery Date: ${currentDate}
       - Status: DELIVERED ✅
       
-      ${
-        isReferralManager
-          ? `This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.`
-          : `Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.`
+      ${isReferralManager
+        ? `This order was placed by one of your referral customers. The delivery has been completed successfully, and any applicable referral commissions will be processed according to your agreement.`
+        : `Thank you for choosing our furniture marketplace! We hope you're satisfied with your purchase. If you have any questions or concerns about your delivered order, please don't hesitate to contact our support team.`
       }
       
-      If you have any questions about this ${
-        isReferralManager ? 'referral order' : 'order'
+      If you have any questions about this ${isReferralManager ? 'referral order' : 'order'
       }, please contact our support team.
       
       © 2025 Furniture Marketplace. All rights reserved.
@@ -576,10 +572,10 @@ export class EmailService {
 
     const formattedDeliveryDate = deliveryDate
       ? new Date(deliveryDate).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-        })
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
       : 'Not specified';
 
     const html = `
@@ -682,6 +678,161 @@ export class EmailService {
     await this.sendEmail({
       to: adminEmail,
       subject: `New Order #${orderId} - ${orderType === 'CUSTOM_PRODUCT' ? 'Custom Product' : 'Existing Product'}`,
+      html,
+      text,
+    });
+  }
+
+  async sendReferralManagerSettlementPendingEmail(
+    email: string,
+    managerName: string,
+    orderRequestId: number,
+    grossSellerAmount: number,
+    sellerName: string,
+    settlementId: number,
+  ): Promise<void> {
+    const formattedAmount = `AED ${Number(grossSellerAmount).toFixed(2)}`;
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Action Required: Set Commission Rate</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #ff6b35; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .settlement-details { 
+              background-color: #e9ecef; 
+              padding: 20px; 
+              border-radius: 8px; 
+              margin: 20px 0; 
+              border-left: 4px solid #ff6b35;
+            }
+            .amount { 
+              font-size: 24px; 
+              font-weight: bold; 
+              color: #ff6b35; 
+              text-align: center;
+              margin: 15px 0;
+              padding: 10px;
+              background-color: #fff;
+              border-radius: 5px;
+            }
+            .action-required {
+              background-color: #fff3cd;
+              border: 2px solid #ffc107;
+              padding: 15px;
+              border-radius: 5px;
+              margin: 20px 0;
+              text-align: center;
+            }
+            .cta-button {
+              display: inline-block;
+              padding: 12px 30px;
+              background-color: #ff6b35;
+              color: white;
+              text-decoration: none;
+              border-radius: 5px;
+              font-weight: bold;
+              margin: 10px 0;
+            }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+            .highlight { background-color: #fff3cd; padding: 2px 5px; border-radius: 3px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>⚠️ Action Required: Set Commission Rate</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${managerName},</p>
+              
+              <div class="action-required">
+                <p><strong>🔔 A new settlement is awaiting your commission rate input!</strong></p>
+              </div>
+              
+              <p>An order has been delivered and the admin has processed the settlement. As the referral manager, you need to set your commission rate to complete the settlement process.</p>
+              
+              <div class="settlement-details">
+                <h3>Settlement Details:</h3>
+                <p><strong>Settlement ID:</strong> #${settlementId}</p>
+                <p><strong>Order ID:</strong> #${orderRequestId}</p>
+                <p><strong>Seller:</strong> ${sellerName}</p>
+                <p><strong>Date:</strong> ${currentDate}</p>
+                
+                <p><strong>Gross Seller Amount (Base for Commission):</strong></p>
+                <div class="amount">${formattedAmount}</div>
+                
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                  <em>This is the amount from which your commission percentage will be calculated.</em>
+                </p>
+              </div>
+              
+              <div class="action-required">
+                <p><strong>What you need to do:</strong></p>
+                <p>Please log in to your dashboard and set your commission rate for this settlement.</p>
+                <p>The seller's final payment depends on your commission rate input.</p>
+              </div>
+              
+              <p style="text-align: center; margin: 20px 0;">
+                <strong>⏰ Please take action as soon as possible to avoid delays in payment processing.</strong>
+              </p>
+              
+              <p>If you have any questions about this settlement, please contact the admin team.</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Hello ${managerName},
+      
+      ⚠️ ACTION REQUIRED: Set Commission Rate
+      
+      A new settlement is awaiting your commission rate input!
+      
+      An order has been delivered and the admin has processed the settlement. As the referral manager, you need to set your commission rate to complete the settlement process.
+      
+      Settlement Details:
+      - Settlement ID: #${settlementId}
+      - Order ID: #${orderRequestId}
+      - Seller: ${sellerName}
+      - Date: ${currentDate}
+      - Gross Seller Amount (Base for Commission): ${formattedAmount}
+      
+      This is the amount from which your commission percentage will be calculated.
+      
+      What you need to do:
+      Please log in to your dashboard and set your commission rate for this settlement.
+      The seller's final payment depends on your commission rate input.
+      
+      ⏰ Please take action as soon as possible to avoid delays in payment processing.
+      
+      If you have any questions about this settlement, please contact the admin team.
+      
+      © 2025 Furniture Marketplace. All rights reserved.
+      This is an automated notification. Please do not reply to this email.
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject: `⚠️ Action Required: Set Commission Rate for Order #${orderRequestId}`,
       html,
       text,
     });
