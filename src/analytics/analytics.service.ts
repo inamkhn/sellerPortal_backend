@@ -256,7 +256,7 @@ export class AnalyticsService {
     orders: { decidedPrice: any; createdAt: Date }[],
     dateRange: DateRange,
   ): ChartDataPoint[] {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { value: number; date: Date }>();
 
     orders.forEach((order) => {
       const date = new Date(order.createdAt);
@@ -287,14 +287,30 @@ export class AnalyticsService {
         });
       }
 
-      const current = grouped.get(key) || 0;
-      grouped.set(key, current + Number(order.decidedPrice));
+      const current = grouped.get(key);
+      if (current) {
+        current.value += Number(order.decidedPrice);
+        // Keep the earliest date for this period
+        if (date < current.date) {
+          current.date = date;
+        }
+      } else {
+        grouped.set(key, {
+          value: Number(order.decidedPrice),
+          date: date,
+        });
+      }
     });
 
-    return Array.from(grouped.entries()).map(([label, value]) => ({
-      label,
-      value: Number(value.toFixed(2)),
-    }));
+    // Convert to array and sort by date chronologically
+    return Array.from(grouped.entries())
+      .map(([label, data]) => ({
+        label,
+        value: Number(data.value.toFixed(2)),
+        date: data.date,
+      }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map(({ label, value }) => ({ label, value }));
   }
 
   // Orders by status chart
@@ -309,7 +325,6 @@ export class AnalyticsService {
       CANCELLED: '#ef4444',
       CONFIRMED: '#8b5cf6',
       PAYMENT_PENDING: '#ec4899',
-      PARTIALLY_DELIVERED: '#06b6d4',
     };
 
     const statusLabels: Record<string, string> = {
@@ -319,7 +334,6 @@ export class AnalyticsService {
       CANCELLED: 'Cancelled',
       CONFIRMED: 'Confirmed',
       PAYMENT_PENDING: 'Payment Pending',
-      PARTIALLY_DELIVERED: 'Partially Delivered',
     };
 
     const ordersByStatus = await this.prisma.orderRequest.groupBy({
@@ -330,10 +344,22 @@ export class AnalyticsService {
       _count: { id: true },
     });
 
-    return ordersByStatus.map((item) => ({
-      label: statusLabels[item.status] || item.status,
-      value: item._count.id,
-      color: statusColors[item.status] || '#6b7280',
+    // Combine DELIVERED and PARTIALLY_DELIVERED into one category
+    const combinedData = new Map<string, number>();
+
+    ordersByStatus.forEach((item) => {
+      // Treat PARTIALLY_DELIVERED as DELIVERED
+      const status =
+        item.status === 'PARTIALLY_DELIVERED' ? 'DELIVERED' : item.status;
+
+      const current = combinedData.get(status) || 0;
+      combinedData.set(status, current + item._count.id);
+    });
+
+    return Array.from(combinedData.entries()).map(([status, count]) => ({
+      label: statusLabels[status] || status,
+      value: count,
+      color: statusColors[status] || '#6b7280',
     }));
   }
 
