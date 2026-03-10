@@ -457,6 +457,12 @@ export class ChatService {
       },
     });
 
+    // Emit real-time event so frontend removes it from local state
+    this.chatGateway.emitToGlobalChat('message_deleted', {
+      messageId: messageId,
+      groupChatId: message.groupChatId
+    });
+
     return { success: true, message: 'Message deleted' };
   }
 

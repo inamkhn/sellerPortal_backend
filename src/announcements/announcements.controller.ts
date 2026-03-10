@@ -57,6 +57,25 @@ export class AnnouncementsController {
     return this.announcementsService.createAnnouncement(admin.id, dto);
   }
 
+  @Post('system')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Create a system announcement (Admin only)',
+    description: 'Creates a system announcement without sending notifications',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'System announcement created successfully',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async createSystemAnnouncement(
+    @CurrentUser() admin: User,
+    @Body() dto: CreateAnnouncementDto,
+  ) {
+    return this.announcementsService.createSystemAnnouncement(admin.id, dto);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Get announcements for current user',

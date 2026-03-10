@@ -43,4 +43,11 @@ export class GetAnnouncementsDto {
   @Type(() => Boolean)
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({
+    description: 'Filter by announcement title',
+    required: false,
+  })
+  @IsOptional()
+  title?: string;
 }

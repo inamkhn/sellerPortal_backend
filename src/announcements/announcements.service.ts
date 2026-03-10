@@ -13,7 +13,7 @@ export class AnnouncementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsGateway: NotificationsGateway,
-  ) {}
+  ) { }
 
   /**
    * Create a new announcement and send notifications to all users except admin
@@ -89,6 +89,27 @@ export class AnnouncementsService {
   }
 
   /**
+   * Create a system announcement without sending notifications
+   */
+  async createSystemAnnouncement(adminId: number, dto: CreateAnnouncementDto) {
+    const announcement = await this.prisma.announcement.create({
+      data: {
+        adminId,
+        title: dto.title,
+        message: dto.message,
+        priority: dto.priority || AnnouncementPriority.NORMAL,
+        targetRole: dto.targetRole || null,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+      },
+    });
+
+    return {
+      ...announcement,
+      notificationsSent: 0,
+    };
+  }
+
+  /**
    * Get announcements for a specific user based on their role
    */
   async getAnnouncementsForUser(
@@ -106,6 +127,9 @@ export class AnnouncementsService {
             { targetRole: null }, // Announcements for all users
             { targetRole: userRole }, // Announcements for specific role
           ],
+        },
+        {
+          title: { not: 'DISABLE_PAYOUT_WINDOWS' }, // Hide system internal announcements
         },
         {
           OR: [
@@ -149,11 +173,12 @@ export class AnnouncementsService {
    * Get all announcements (Admin only)
    */
   async getAllAnnouncements(filters: GetAnnouncementsDto) {
-    const { page = 1, limit = 20, priority, isActive } = filters;
+    const { page = 1, limit = 20, priority, isActive, title } = filters;
 
     const where = {
       ...(priority && { priority }),
       ...(isActive !== undefined && { isActive }),
+      ...(title && { title }),
     };
 
     const [announcements, total] = await Promise.all([
