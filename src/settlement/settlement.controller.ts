@@ -75,7 +75,7 @@ export class SettlementController {
   @ApiOperation({
     summary: 'Request payout for pending settlements',
     description:
-      'Submit a payout request for all pending settlements. Only available during payout windows (15-16 and 30-31-1). Limited to one request per day.',
+      'Submit a payout request for all pending settlements. Only available during payout windows (30-31-1). Limited to one request per day.',
   })
   @ApiResponse({
     status: 201,

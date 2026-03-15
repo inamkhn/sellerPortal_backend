@@ -140,13 +140,14 @@ export class ChatService {
     });
 
     const hasMore = messages.length > safeLimit;
-    const data = hasMore ? messages.slice(0, -1) : messages;
+    const batch = hasMore ? messages.slice(0, -1) : [...messages];
+    const oldestMessage = batch[batch.length - 1]; // Before reversing, the last item is the oldest
 
     return {
-      data: data.reverse(), // Reverse to show oldest first
+      data: batch.reverse(), // Reverse to show oldest first
       hasMore,
-      // CRITICAL FIX: Use last message ID, not first (after reversing, last item is the newest/lowest ID for cursor)
-      nextCursor: hasMore ? data[data.length - 1].id : null,
+      // Use the oldest message ID for the next cursor so we paginate backwards in time
+      nextCursor: hasMore && oldestMessage ? oldestMessage.id : null,
     };
   }
 

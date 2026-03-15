@@ -38,11 +38,6 @@ export class SettlementService {
     const month = now.getMonth();
     const year = now.getFullYear();
 
-    // Mid-month window: 15-16
-    if (day === 15 || day === 16) {
-      return true;
-    }
-
     // Month-end window: 30-31
     if (day === 30 || day === 31) {
       return true;
@@ -81,15 +76,12 @@ export class SettlementService {
     // Determine next payout date
     let nextDate: Date;
 
-    if (day < 15) {
-      // Next window is 15th of current month
-      nextDate = new Date(year, month, 15);
-    } else if (day >= 17 && day < 30) {
+    if (day < 30) {
       // Next window is 30th of current month
       nextDate = new Date(year, month, 30);
     } else {
-      // After 31st or between windows, next is 15th of next month
-      nextDate = new Date(year, month + 1, 15);
+      // After 31st or between windows, next is 30th of next month
+      nextDate = new Date(year, month + 1, 30);
     }
 
     return nextDate.toISOString();
@@ -161,7 +153,7 @@ export class SettlementService {
     // 1. Check payout window
     if (!(await this.isPayoutWindowActive())) {
       throw new BadRequestException(
-        'Payout requests are only available on 15-16 and 30-31-1 of each month',
+        'Payout requests are only available on 30-31-1 of each month',
       );
     }
 
