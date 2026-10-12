@@ -3,13 +3,19 @@ import { PrismaService } from '../database/database.service';
 import { SettlementQueryDto } from './dto';
 import { Prisma, SettlementStatus, SettlementType } from '@prisma/client';
 import { EmailService } from '../common/services/email.service';
+import { SendPayoutReminderDto } from './dto';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { PAYOUT_REMINDER_JOB, PAYOUT_REMINDER_QUEUE } from './settlement.constants';
 
 @Injectable()
 export class SettlementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
-  ) { }
+    @InjectQueue(PAYOUT_REMINDER_QUEUE)
+    private readonly payoutReminderQueue: Queue,
+  ) {}
 
   // ============== PAYOUT REQUEST HELPERS ==============
 
@@ -973,6 +979,76 @@ export class SettlementService {
         totalPages: Math.ceil(total / limit),
       },
       stats,
+    };
+  }
+
+  async queuePayoutReminderForAllUsers(
+    adminId: number,
+    dto: SendPayoutReminderDto,
+  ): Promise<{
+    campaignKey: string;
+    totalUsers: number;
+    queuedCount: number;
+    skippedCount: number;
+  }> {
+    const { campaignKey, subject, message, forceResend = false } = dto;
+
+    const users = await this.prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        profile: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    let queuedCount = 0;
+    let skippedCount = 0;
+
+    for (const user of users) {
+      const fullName =
+        user.profile?.fullName ||
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+        null;
+
+      const jobId = `payout-reminder:${campaignKey}:${user.id}`;
+      const existingJob = await this.payoutReminderQueue.getJob(jobId);
+
+      if (existingJob) {
+        skippedCount += 1;
+        continue;
+      }
+
+      await this.payoutReminderQueue.add(
+        PAYOUT_REMINDER_JOB,
+        {
+          userId: user.id,
+          email: user.email,
+          fullName,
+          campaignKey,
+          subject,
+          message,
+          forceResend,
+          triggeredBy: adminId,
+        },
+        {
+          jobId,
+        },
+      );
+      queuedCount += 1;
+    }
+
+    return {
+      campaignKey,
+      totalUsers: users.length,
+      queuedCount,
+      skippedCount,
     };
   }
 }

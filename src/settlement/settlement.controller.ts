@@ -24,6 +24,7 @@ import {
   SettlementQueryDto,
   CreateSettlementDto,
   UpdateSettlementDto,
+  SendPayoutReminderDto,
 } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators';
@@ -97,6 +98,40 @@ export class SettlementController {
       success: true,
       message: 'Payout request submitted successfully',
       data,
+    };
+  }
+
+  @Post('admin/send-payout-reminder')
+  @ApiOperation({
+    summary: 'Queue payout reminder email for all users (Admin only)',
+    description:
+      'Queues one email reminder per user using campaign key idempotency.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Payout reminder email jobs queued successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
+  async sendPayoutReminder(
+    @GetUser() user: User,
+    @Body() dto: SendPayoutReminderDto,
+  ) {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Only admins can trigger payout reminder emails',
+      );
+    }
+
+    const result = await this.settlementService.queuePayoutReminderForAllUsers(
+      user.id,
+      dto,
+    );
+
+    return {
+      success: true,
+      message: 'Payout reminder jobs queued successfully',
+      data: result,
     };
   }
 

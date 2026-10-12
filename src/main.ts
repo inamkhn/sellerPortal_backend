@@ -12,6 +12,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.enableShutdownHooks();
 
   // Use Pino logger
   app.useLogger(app.get(Logger));
@@ -30,7 +31,9 @@ async function bootstrap() {
   app.use(helmet());
   app.use(compression());
   app.enableCors({
-    origin: [
+    origin: configService.get('NODE_ENV') === 'production'
+      ? [configService.getOrThrow<string>('FRONTEND_URL')]
+      : [
       configService.get<string>('FRONTEND_URL') || 'http://localhost:3000',
       'http://localhost:3002',
       'https://sellerpotal-elsl.onrender.com', // Production frontend

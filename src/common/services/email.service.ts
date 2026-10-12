@@ -837,4 +837,88 @@ export class EmailService {
       text,
     });
   }
+
+  async sendPayoutReminderEmail(
+    email: string,
+    userName: string,
+    customSubject?: string,
+    customMessage?: string,
+  ): Promise<void> {
+    const subject =
+      customSubject || 'Reminder: Submit your payout request - SellerSpot';
+    const message =
+      customMessage ||
+      'If you have pending payouts, please submit your payout request during active payout windows.';
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Payout Request Reminder</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; background-color: #f9f9f9; }
+            .notice { background-color: #e9f5ff; border-left: 4px solid #007bff; padding: 16px; border-radius: 4px; margin: 16px 0; }
+            .windows { background-color: #ffffff; border: 1px solid #ddd; padding: 16px; border-radius: 6px; margin: 16px 0; }
+            .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Payout Request Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Hello ${userName},</p>
+              <div class="notice">
+                <p>${message}</p>
+              </div>
+              <div class="windows">
+                <p><strong>Standard payout request windows:</strong></p>
+                <ul>
+                  <li>Month-end: 30th - 31st - 1st</li>
+                </ul>
+              </div>
+              <p>Please visit your dashboard to review pending settlements and request payout if applicable.</p>
+              <p><strong>Date:</strong> ${currentDate}</p>
+            </div>
+            <div class="footer">
+              <p>© 2025 Furniture Marketplace. All rights reserved.</p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Hello ${userName},
+
+      ${message}
+
+      Standard payout request windows:
+      - Month-end: 30th - 31st - 1st
+
+      Please visit your dashboard to review pending settlements and request payout if applicable.
+      Date: ${currentDate}
+
+      © 2025 Furniture Marketplace. All rights reserved.
+      This is an automated notification. Please do not reply to this email.
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject,
+      html,
+      text,
+    });
+  }
 }

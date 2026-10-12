@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { BullModule } from '@nestjs/bull';
 import { LoggerModule } from 'nestjs-pino';
 import { join } from 'path';
 
@@ -24,12 +25,15 @@ import { ChatModule } from './chat/chat.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FactoryPaymentModule } from './factory-payment/factory-payment.module';
+import { HealthModule } from './health/health.module';
+import { validateEnvironment } from './config/validate-environment';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnvironment,
     }),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
@@ -80,12 +84,64 @@ import { FactoryPaymentModule } from './factory-payment/factory-payment.module';
         limit: 10,
       },
     ]),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const redisUrlRaw = configService.get<string>('REDIS_URL');
+        const redisHostRaw = configService.get<string>('REDIS_HOST');
+        const redisPortRaw = configService.get<string>('REDIS_PORT');
+        const redisPasswordRaw = configService.get<string>('REDIS_PASSWORD');
+        const useTls = configService.get<string>('REDIS_TLS', 'true') === 'true';
+
+        let host = redisHostRaw;
+        let port = Number(redisPortRaw || 6379);
+        let password = redisPasswordRaw;
+
+        const extractUrlFromRaw = (value?: string): string | null => {
+          if (!value) return null;
+          const trimmed = value.trim();
+          if (trimmed.startsWith('redis://') || trimmed.startsWith('rediss://')) {
+            return trimmed;
+          }
+          const match = trimmed.match(/(rediss?:\/\/\S+)/);
+          return match ? match[1] : null;
+        };
+
+        const redisUrl = extractUrlFromRaw(redisUrlRaw) || extractUrlFromRaw(redisHostRaw);
+        if (redisUrl) {
+          const parsed = new URL(redisUrl);
+          host = parsed.hostname || host;
+          port = parsed.port ? Number(parsed.port) : port;
+          password = decodeURIComponent(parsed.password || password || '');
+        }
+
+        return {
+          redis: {
+            host,
+            port,
+            password,
+            tls: useTls ? {} : undefined,
+          },
+          defaultJobOptions: {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
+            removeOnComplete: 1000,
+            removeOnFail: 5000,
+          },
+        };
+      },
+    }),
     ScheduleModule.forRoot(),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),
       serveRoot: '/uploads',
     }),
     DatabaseModule,
+    HealthModule,
     AuthModule,
     ProfileModule,
     ProductsModule,
