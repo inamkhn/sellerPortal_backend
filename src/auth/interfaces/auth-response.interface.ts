@@ -12,12 +12,23 @@ export interface AuthResponse {
   tokens: {
     accessToken: string;
   };
+  profile?: {
+    verified: boolean;
+  };
+  referralInfo?: {
+    wasReferred: boolean;
+    referrerName?: string;
+    userReferralCode: string;
+  };
 }
 
 export interface TokenPayload {
   sub: number;
   email: string;
   role: Role;
+  isVerified: boolean;
+  firstName?: string | null;
+  lastName?: string | null;
   iat?: number;
   exp?: number;
 }

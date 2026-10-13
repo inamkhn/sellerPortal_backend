@@ -8,7 +8,7 @@ import {
   Max,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { ProductCategory, ProductCondition } from '@prisma/client';
+import { ProductCondition } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class ProductQueryDto {
@@ -50,13 +50,23 @@ export class ProductQueryDto {
   search?: string;
 
   @ApiProperty({
-    description: 'Filter by product category',
-    enum: ProductCategory,
+    description: 'Filter by product category ID',
+    example: 1,
     required: false,
   })
   @IsOptional()
-  @IsEnum(ProductCategory, { message: 'Invalid product category' })
-  category?: ProductCategory;
+  @IsInt({ message: 'Category ID must be an integer' })
+  @Type(() => Number)
+  categoryId?: number;
+
+  @ApiProperty({
+    description: 'Filter by product category name',
+    example: 'Chairs',
+    required: false,
+  })
+  @IsOptional()
+  @IsString({ message: 'Category name must be a string' })
+  categoryName?: string;
 
   @ApiProperty({
     description: 'Filter by product condition',

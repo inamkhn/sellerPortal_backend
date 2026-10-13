@@ -1,8 +1,8 @@
 export { RegisterDto } from './register.dto';
 export { LoginDto } from './login.dto';
 export { ResetPasswordDto } from './reset-password.dto';
-export { VerifyEmailDto } from './verify-email.dto';
 export { ForgotPasswordDto } from './forgot-password.dto';
+export { VerifyEmailDto } from './VerifyEmailDto';
 export {
   AuthResponseDto,
   UserResponseDto,

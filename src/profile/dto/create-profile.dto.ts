@@ -66,26 +66,50 @@ export class CreateProfileDto {
   accountNumber?: string;
 
   @ApiProperty({
-    description: 'Facebook profile link',
+    description: 'Bank name',
+    example: 'Meezan Bank',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 100, {
+    message: 'Bank name must be between 2 and 100 characters',
+  })
+  bankName?: string;
+
+  @ApiProperty({
+    description: 'Account holder name',
+    example: 'John Doe',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 100, {
+    message: 'Account title must be between 2 and 100 characters',
+  })
+  accountTitle?: string;
+
+  @ApiProperty({
+    description: 'Facebook profile link (optional, can be empty)',
     example: 'https://facebook.com/johndoe',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Facebook profile URL',
+  @Matches(/^(https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+)?$/, {
+    message: 'Please provide a valid Facebook profile URL or leave empty',
   })
   facebookLink?: string;
 
   @ApiProperty({
-    description: 'Dubizzle profile link',
+    description: 'Dubizzle profile link (optional, can be empty)',
     example: 'https://dubizzle.com/users/johndoe',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Dubizzle profile URL',
+  @Matches(/^(https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+)?$/, {
+    message: 'Please provide a valid Dubizzle profile URL or leave empty',
   })
   dubizzleLink?: string;
 

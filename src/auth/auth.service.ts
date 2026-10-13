@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -23,6 +24,7 @@ import {
   isOTPExpired,
   isValidOTPFormat,
 } from '../common/utils/otp.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AuthService {
@@ -31,7 +33,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private emailService: EmailService,
-  ) { }
+    private notificationsService: NotificationsService,
+  ) {}
 
   // Password hashing utilities
   async hashPassword(password: string): Promise<string> {
@@ -47,11 +50,14 @@ export class AuthService {
   }
 
   // JWT token generation
-  async generateAccessToken(user: User): Promise<string> {
+  generateAccessToken(user: User): string {
     const payload: TokenPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      isVerified: user.isVerified,
+      firstName: user.firstName,
+      lastName: user.lastName,
     };
 
     // Generate access token with longer expiry since no refresh token
@@ -64,15 +70,54 @@ export class AuthService {
 
   // User registration
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const { email, password, firstName, lastName } = registerDto;
+    const { email, password, firstName, lastName, referralCode } = registerDto;
+
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
 
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
+    }
+
+    // Validate referral code (now required)
+    if (!referralCode || !referralCode.trim()) {
+      throw new BadRequestException(
+        'Referral code is required for registration',
+      );
+    }
+
+    const referrerProfile = await this.prisma.profile.findUnique({
+      where: { referralCode: referralCode.trim() },
+      include: { user: true },
+    });
+
+    if (!referrerProfile || !referrerProfile.user) {
+      throw new BadRequestException(
+        'Invalid referral code. Please check the code and try again.',
+      );
+    }
+
+    const referrer = referrerProfile.user;
+
+    // Additional validation: Check if referrer account is verified
+    // Only verified users can refer others
+    if (!referrer.isVerified) {
+      throw new BadRequestException(
+        'This referral code belongs to an unverified account and cannot be used.',
+      );
+    }
+
+    // Check if referrer profile is verified
+    // Any user (USER, ADMIN, REFERRAL_MANAGER) can refer others, but their profile must be verified
+    if (!referrerProfile.verified) {
+      throw new BadRequestException(
+        'This referral code is not yet activated. The profile needs to be verified by an admin.',
+      );
     }
 
     // Hash password
@@ -85,7 +130,7 @@ export class AuthService {
     // Create user
     const user = await this.prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         firstName,
         lastName,
@@ -95,13 +140,34 @@ export class AuthService {
       },
     });
 
+    // Create user profile with referral information
+    const profileData = {
+      userId: user.id,
+      fullName: `${firstName || ''} ${lastName || ''}`.trim() || null,
+      referralCode: await this.generateUniqueReferralCode(),
+      verified: false,
+      referredBy: referrer.id,
+    };
+
+    await this.prisma.profile.create({
+      data: profileData,
+    });
+
+    // Create referral record (always required now)
+    await this.prisma.referral.create({
+      data: {
+        referrerId: referrer.id,
+        refereeId: user.id,
+      },
+    });
+
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     // Send verification email
     try {
       await this.emailService.sendVerificationEmail(
-        user.email,
+        normalizedEmail,
         emailVerificationOtp,
         user.firstName || undefined,
       );
@@ -109,6 +175,58 @@ export class AuthService {
       // Log error but don't fail registration
       console.error('Failed to send verification email:', error);
     }
+
+    // Send notifications (non-blocking)
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const userName = `${firstName} ${lastName}`.trim() || normalizedEmail;
+
+          // 1. Notify all admins about new user registration
+          await this.notificationsService.createNotificationByRole(
+            'ADMIN',
+            'SYSTEM',
+            'New User Registration',
+            `New user ${userName} (${normalizedEmail}) has registered using referral code from ${referrer.firstName} ${referrer.lastName}.`,
+            {
+              actionUrl: `/admin-users/${user.id}`,
+              referenceId: user.id,
+              metadata: {
+                userId: user.id,
+                email: normalizedEmail,
+                wasReferred: true,
+                referrerId: referrer.id,
+              },
+            },
+          );
+
+          // 2. Notify the referrer about new signup (only if not an admin)
+          // Admins already receive notifications through the admin broadcast above
+          if (referrer.role !== 'ADMIN') {
+            await this.notificationsService.createNotification({
+              userId: referrer.id,
+              type: 'SYSTEM',
+              title: 'New Referral Signup',
+              message: `${userName} has signed up using your referral code! You may earn commissions from their orders.`,
+              actionUrl: `/referrals/${user.id}`,
+              referenceId: user.id,
+              metadata: {
+                newUserId: user.id,
+                newUserEmail: normalizedEmail,
+                newUserName: userName,
+              },
+            });
+          }
+
+          console.log(`Registration notifications sent for user ${user.id}`);
+        } catch (error) {
+          console.error(
+            `Failed to send registration notifications for user ${user.id}`,
+            error,
+          );
+        }
+      })();
+    });
 
     return {
       user: {
@@ -122,16 +240,55 @@ export class AuthService {
       tokens: {
         accessToken,
       },
+      referralInfo: {
+        wasReferred: true,
+        referrerName:
+          `${referrer.firstName || ''} ${referrer.lastName || ''}`.trim() ||
+          referrer.email,
+        userReferralCode: profileData.referralCode,
+      },
     };
+  }
+
+  // Generate unique referral code
+  private async generateUniqueReferralCode(): Promise<string> {
+    let referralCode = '';
+    let isUnique = false;
+
+    while (!isUnique) {
+      // Generate a random 8-character alphanumeric code
+      referralCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+      // Check if it's unique
+      const existingProfile = await this.prisma.profile.findUnique({
+        where: { referralCode },
+      });
+
+      if (!existingProfile) {
+        isUnique = true;
+      }
+    }
+
+    return referralCode;
   }
 
   // User login
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     const { email, password } = loginDto;
 
-    // Find user
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Find user with profile
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
+      include: {
+        profile: {
+          select: {
+            verified: true,
+          },
+        },
+      },
     });
 
     if (!user || !user.password) {
@@ -154,7 +311,7 @@ export class AuthService {
     });
 
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     return {
       user: {
@@ -168,6 +325,9 @@ export class AuthService {
       tokens: {
         accessToken,
       },
+      profile: {
+        verified: user.profile?.verified ?? false,
+      },
     };
   }
 
@@ -175,9 +335,12 @@ export class AuthService {
   async registerWithGoogle(googleUser: GoogleUser): Promise<AuthResponse> {
     const { email, firstName, lastName, picture } = googleUser;
 
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Check if user already exists
     let user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (user) {
@@ -186,7 +349,7 @@ export class AuthService {
         user = await this.prisma.user.update({
           where: { id: user.id },
           data: {
-            googleId: email, // Using email as Google ID for simplicity
+            googleId: normalizedEmail, // Using email as Google ID for simplicity
             avatar: picture,
             isVerified: true, // Google users are automatically verified
             lastLogin: new Date(),
@@ -203,10 +366,10 @@ export class AuthService {
       // Create new user
       user = await this.prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           firstName,
           lastName,
-          googleId: email,
+          googleId: normalizedEmail,
           avatar: picture,
           isVerified: true,
           password: null, // Google users don't have passwords
@@ -215,7 +378,7 @@ export class AuthService {
     }
 
     // Generate access token
-    const accessToken = await this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(user);
 
     return {
       user: {
@@ -246,8 +409,11 @@ export class AuthService {
   }
 
   async resendVerificationEmail(email: string): Promise<void> {
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -273,7 +439,7 @@ export class AuthService {
     // Send verification email
     try {
       await this.emailService.sendVerificationEmail(
-        email,
+        normalizedEmail,
         emailVerificationOtp,
         user.firstName || undefined,
       );
@@ -286,8 +452,11 @@ export class AuthService {
 
   // Password reset functionality
   async requestPasswordReset(email: string): Promise<void> {
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -310,7 +479,7 @@ export class AuthService {
     // Send password reset email
     try {
       await this.emailService.sendPasswordResetEmail(
-        email,
+        normalizedEmail,
         passwordResetOtp,
         user.firstName || undefined,
       );
@@ -330,8 +499,11 @@ export class AuthService {
       throw new BadRequestException('Invalid OTP format');
     }
 
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
     const user = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
@@ -366,13 +538,91 @@ export class AuthService {
     // Send password reset confirmation email
     try {
       await this.emailService.sendPasswordResetConfirmation(
-        user.email,
+        normalizedEmail,
         user.firstName || undefined,
       );
     } catch (error) {
       // Log error but don't fail the operation
       console.error('Failed to send password reset confirmation email:', error);
     }
+  }
+
+  // Email verification with OTP
+  async verifyEmail(email: string, otp: string): Promise<void> {
+    // Validate OTP format
+    if (!isValidOTPFormat(otp, 6)) {
+      throw new BadRequestException('Invalid OTP format');
+    }
+
+    // Normalize email to lowercase (safety net)
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (!user.emailVerificationOtp) {
+      throw new BadRequestException('No verification OTP found');
+    }
+
+    if (user.emailVerificationOtp !== otp) {
+      throw new BadRequestException('Invalid verification OTP');
+    }
+
+    if (
+      !user.emailVerificationExpiry ||
+      isOTPExpired(user.emailVerificationExpiry)
+    ) {
+      throw new BadRequestException('Verification OTP has expired');
+    }
+
+    // Mark user as verified and clear verification OTP
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isVerified: true,
+        emailVerificationOtp: null,
+        emailVerificationExpiry: null,
+      },
+    });
+  }
+
+  //  /api/auth/me  getMe
+  async getMe(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: {
+          select: {
+            fullName: true,
+            whatsappNumber: true,
+            referralCode: true,
+            verified: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        avatar: user.avatar,
+        role: user.role,
+        isVerified: user.isVerified,
+        profile: user.profile,
+      },
+    };
   }
 
   // Get user by ID (for JWT strategy)

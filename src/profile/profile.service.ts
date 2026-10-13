@@ -26,7 +26,6 @@ export interface MinimalProduct {
   category: string;
   condition: string;
   sku: string | null;
-  facebookPostingStatus: string;
   createdAt: Date;
 }
 
@@ -68,6 +67,8 @@ export class ProfileService {
         whatsappNumber: createProfileDto.whatsappNumber,
         bankAccount: createProfileDto.bankAccount,
         accountNumber: createProfileDto.accountNumber,
+        bankName: createProfileDto.bankName,
+        accountTitle: createProfileDto.accountTitle,
         facebookLink: createProfileDto.facebookLink,
         dubizzleLink: createProfileDto.dubizzleLink,
         referralCode: createProfileDto.referralCode,
@@ -90,8 +91,8 @@ export class ProfileService {
     return profile;
   }
 
-  async getProfile(userId: number): Promise<Profile | null> {
-    return this.prisma.profile.findUnique({
+  async getProfile(userId: number): Promise<any> {
+    const profile = await this.prisma.profile.findUnique({
       where: { userId },
       include: {
         user: {
@@ -102,6 +103,19 @@ export class ProfileService {
             lastName: true,
             role: true,
             isVerified: true,
+            referredUsers: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    createdAt: true,
+                  },
+                },
+              },
+            },
           },
         },
         referrer: {
@@ -114,6 +128,12 @@ export class ProfileService {
         },
       },
     });
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    return profile;
   }
 
   async updateProfile(
@@ -168,6 +188,8 @@ export class ProfileService {
       whatsappNumber: string | null;
       bankAccount: any;
       accountNumber: string | null;
+      bankName: string | null;
+      accountTitle: string | null;
       facebookLink: string | null;
       dubizzleLink: string | null;
       verified: boolean;
@@ -190,6 +212,12 @@ export class ProfileService {
     }
     if (updateProfileDto.accountNumber !== undefined) {
       updateData.accountNumber = updateProfileDto.accountNumber;
+    }
+    if (updateProfileDto.bankName !== undefined) {
+      updateData.bankName = updateProfileDto.bankName;
+    }
+    if (updateProfileDto.accountTitle !== undefined) {
+      updateData.accountTitle = updateProfileDto.accountTitle;
     }
     if (updateProfileDto.facebookLink !== undefined) {
       updateData.facebookLink = updateProfileDto.facebookLink;
@@ -269,29 +297,7 @@ export class ProfileService {
     });
   }
 
-  async generateUniqueReferralCode(): Promise<string> {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let referralCode: string;
-    let isUnique = false;
-
-    do {
-      referralCode = '';
-      for (let i = 0; i < 8; i++) {
-        referralCode += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-
-      const existing = await this.prisma.profile.findUnique({
-        where: { referralCode },
-      });
-
-      isUnique = !existing;
-    } while (!isUnique);
-
-    return referralCode;
-  }
-
   // Product Management Methods
-
   async addProductToProfile(
     userId: number,
     productId: number,
@@ -442,10 +448,13 @@ export class ProfileService {
         ownerId: true,
         title: true,
         price: true,
-        category: true,
+        category: {
+          select: {
+            name: true,
+          },
+        },
         condition: true,
         sku: true,
-        facebookPostingStatus: true,
         createdAt: true,
       },
     });
@@ -476,10 +485,9 @@ export class ProfileService {
       ownerId: product.ownerId,
       title: product.title,
       price: product.price.toString(),
-      category: product.category,
+      category: product.category?.name || 'Uncategorized',
       condition: product.condition,
       sku: product.sku,
-      facebookPostingStatus: product.facebookPostingStatus,
       createdAt: product.createdAt,
     }));
   }

@@ -1,0 +1,46 @@
+# Production Caddyfile for Seller Portal Backend
+#
+# DOMAIN is injected by docker-compose.yml from /opt/app/.env.
+# Falls back to "localhost" only during local testing — in production
+# the DOMAIN env var is required (compose enforces this with :?).
+#
+# Caddy automatically obtains and renews a Let's Encrypt TLS certificate
+# for the configured domain. Ensure DNS points to the Elastic IP before
+# the first start, otherwise ACME challenge will fail.
+
+{$DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Reverse proxy to NestJS API container (internal Docker network).
+    # WebSocket upgrade headers are forwarded automatically by Caddy.
+    reverse_proxy api:3000 {
+        # Buffer and retry briefly during container restart (e.g. ~5s window).
+        lb_try_duration 10s
+        lb_try_interval 250ms
+
+        # Caddy actively monitors API health. If /ready returns non-2xx,
+        # Caddy stops forwarding until it recovers.
+        health_uri /api/v1/health/ready
+        health_interval 15s
+        health_timeout 4s
+        health_status 200
+    }
+
+    # Security headers
+    header {
+        # HSTS: only enable includeSubDomains + preload after confirming
+        # ALL subdomains support HTTPS permanently.
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Remove Server header to avoid fingerprinting
+        -Server
+    }
+
+    log {
+        output stderr
+        format json
+        level INFO
+    }
+}

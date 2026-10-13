@@ -1,505 +1,193 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
-import { Referral } from '@prisma/client';
-
-export interface ReferralWithDetails extends Referral {
-  referrer: {
-    id: number;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    profile: {
-      fullName: string | null;
-      referralCode: string;
-      verified: boolean;
-    } | null;
-  };
-  referee?: {
-    id: number;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    profile: {
-      fullName: string | null;
-      verified: boolean;
-    } | null;
-  };
-}
-
-export interface PaginatedReferrals {
-  referrals: ReferralWithDetails[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-export interface ReferralInfo {
-  referralCode: string;
-  totalReferrals: number;
-  activeReferrals: number;
-  totalEarnings: number;
-  pendingEarnings: number;
-}
-
-export interface ReferralEarnings {
-  totalEarnings: number;
-  pendingEarnings: number;
-  paidEarnings: number;
-  earningsBreakdown: {
-    refereeId: number;
-    refereeName: string;
-    totalEarned: number;
-    pendingAmount: number;
-    paidAmount: number;
-    paymentsCount: number;
-  }[];
-}
-
-export interface ReferralStats {
-  totalReferrals: number;
-  activeReferrers: number;
-  totalReferralEarnings: number;
-  averageReferralsPerUser: number;
-  topReferrers: {
-    userId: number;
-    userName: string;
-    referralCount: number;
-    totalEarnings: number;
-  }[];
-}
+import { ReferralQueryDto, ReferralSortBy } from './dto';
+import { Prisma, SettlementType } from '@prisma/client';
 
 @Injectable()
 export class ReferralsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async applyReferralCode(
-    userId: number,
-    referralCode: string,
-  ): Promise<ReferralWithDetails> {
-    // Check if user already has a referrer
-    const existingReferral = await this.prisma.referral.findFirst({
-      where: { refereeId: userId },
-    });
-
-    if (existingReferral) {
-      throw new BadRequestException('You already have a referrer');
-    }
-
-    // Find the referrer by referral code
-    const referrerProfile = await this.prisma.profile.findUnique({
-      where: { referralCode },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
-
-    if (!referrerProfile) {
-      throw new BadRequestException('Invalid referral code');
-    }
-
-    // Check if user is trying to refer themselves
-    if (referrerProfile.userId === userId) {
-      throw new BadRequestException('You cannot refer yourself');
-    }
-
-    // Create the referral relationship
-    const referral = await this.prisma.referral.create({
-      data: {
-        referrerId: referrerProfile.userId,
-        refereeId: userId,
-      },
-      include: {
-        referrer: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profile: {
-              select: {
-                fullName: true,
-                referralCode: true,
-                verified: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    // Update the referee's profile to link to referrer
-    await this.prisma.profile.update({
-      where: { userId },
-      data: { referredBy: referrerProfile.userId },
-    });
-
-    return referral;
-  }
-
-  async getUserReferralInfo(userId: number): Promise<ReferralInfo> {
-    // Get user's profile with referral code
-    const profile = await this.prisma.profile.findUnique({
-      where: { userId },
-      select: { referralCode: true },
-    });
-
-    if (!profile) {
-      throw new NotFoundException('User profile not found');
-    }
-
-    // Get referral statistics
-    const [totalReferrals, activeReferrals, earningsData] = await Promise.all([
-      this.prisma.referral.count({
-        where: { referrerId: userId },
-      }),
-      this.prisma.referral.count({
-        where: {
-          referrerId: userId,
-          referee: {
-            profile: {
-              verified: true,
-            },
-          },
-        },
-      }),
-      this.prisma.payment.aggregate({
-        where: { referrerId: userId },
-        _sum: {
-          referrerShare: true,
-        },
-      }),
-    ]);
-
-    const [pendingEarnings] = await Promise.all([
-      this.prisma.payment.aggregate({
-        where: {
-          referrerId: userId,
-          status: 'PENDING',
-        },
-        _sum: {
-          referrerShare: true,
-        },
-      }),
-    ]);
-
-    return {
-      referralCode: profile.referralCode,
-      totalReferrals,
-      activeReferrals,
-      totalEarnings: Number(earningsData._sum.referrerShare) || 0,
-      pendingEarnings: Number(pendingEarnings._sum.referrerShare) || 0,
-    };
-  }
-
-  async getUserReferrals(
-    userId: number,
-    page: number = 1,
-    limit: number = 10,
-  ): Promise<PaginatedReferrals> {
+  async findAll(userId: number, query: ReferralQueryDto) {
+    const {
+      search,
+      status,
+      sortBy = ReferralSortBy.COMMISSION,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 10,
+    } = query;
     const skip = (page - 1) * limit;
 
-    const [referrals, total] = await Promise.all([
-      this.prisma.referral.findMany({
-        where: { referrerId: userId },
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          referrer: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              profile: {
-                select: {
-                  fullName: true,
-                  referralCode: true,
-                  verified: true,
-                },
-              },
-            },
-          },
-          referee: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              profile: {
-                select: {
-                  fullName: true,
-                  verified: true,
-                },
-              },
-            },
-          },
-        },
-      }),
-      this.prisma.referral.count({
-        where: { referrerId: userId },
-      }),
-    ]);
-
-    const totalPages = Math.ceil(total / limit);
-
-    return {
-      referrals,
-      total,
-      page,
-      limit,
-      totalPages,
-    };
-  }
-
-  async getReferralEarnings(userId: number): Promise<ReferralEarnings> {
-    // Get all payments where user is the referrer
-    const payments = await this.prisma.payment.findMany({
+    // Get all users referred by current user
+    const referrals = await this.prisma.referral.findMany({
       where: { referrerId: userId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            profile: {
-              select: {
-                fullName: true,
-              },
-            },
-          },
-        },
-      },
+      select: { refereeId: true },
     });
 
-    const totalEarnings = payments.reduce(
-      (sum, payment) => sum + Number(payment.referrerShare || 0),
-      0,
-    );
+    const referredUserIds = referrals.map((r) => r.refereeId);
 
-    const pendingEarnings = payments
-      .filter((payment) => payment.status === 'PENDING')
-      .reduce((sum, payment) => sum + Number(payment.referrerShare || 0), 0);
-
-    const paidEarnings = payments
-      .filter((payment) => payment.status === 'PAID')
-      .reduce((sum, payment) => sum + Number(payment.referrerShare || 0), 0);
-
-    // Group earnings by referee with proper typing
-    type EarningsData = {
-      refereeId: number;
-      refereeName: string;
-      totalEarned: number;
-      pendingAmount: number;
-      paidAmount: number;
-      paymentsCount: number;
-    };
-
-    const earningsMap = new Map<number, EarningsData>();
-    payments.forEach((payment) => {
-      const refereeId = payment.userId;
-      const refereeName =
-        payment.user.profile?.fullName ||
-        `${payment.user.firstName || ''} ${payment.user.lastName || ''}`.trim() ||
-        'Unknown User';
-
-      if (!earningsMap.has(refereeId)) {
-        earningsMap.set(refereeId, {
-          refereeId,
-          refereeName,
-          totalEarned: 0,
-          pendingAmount: 0,
-          paidAmount: 0,
-          paymentsCount: 0,
-        });
-      }
-
-      const earnings = earningsMap.get(refereeId)!; // Non-null assertion since we just checked/set it
-      const amount = Number(payment.referrerShare || 0);
-      earnings.totalEarned += amount;
-      earnings.paymentsCount += 1;
-
-      if (payment.status === 'PENDING') {
-        earnings.pendingAmount += amount;
-      } else if (payment.status === 'PAID') {
-        earnings.paidAmount += amount;
-      }
-    });
-
-    return {
-      totalEarnings,
-      pendingEarnings,
-      paidEarnings,
-      earningsBreakdown: Array.from(earningsMap.values()),
-    };
-  }
-
-  async getReferralStats(): Promise<ReferralStats> {
-    const [
-      totalReferrals,
-      activeReferrers,
-      totalReferralEarningsResult,
-      topReferrersData,
-    ] = await Promise.all([
-      this.prisma.referral.count(),
-      this.prisma.referral
-        .groupBy({
-          by: ['referrerId'],
-        })
-        .then((groups) => groups.length),
-      this.prisma.payment.aggregate({
-        where: { referrerId: { not: null } },
-        _sum: { referrerShare: true },
-      }),
-      this.prisma.referral.groupBy({
-        by: ['referrerId'],
-        _count: { referrerId: true },
-        orderBy: { _count: { referrerId: 'desc' } },
-        take: 10,
-      }),
-    ]);
-
-    // Get detailed info for top referrers
-    const topReferrersWithDetails = await Promise.all(
-      topReferrersData.map(async (referrer) => {
-        const user = await this.prisma.user.findUnique({
-          where: { id: referrer.referrerId },
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            profile: {
-              select: {
-                fullName: true,
-              },
-            },
-          },
-        });
-
-        const earnings = await this.prisma.payment.aggregate({
-          where: { referrerId: referrer.referrerId },
-          _sum: { referrerShare: true },
-        });
-
-        const userName =
-          user?.profile?.fullName ||
-          `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
-          'Unknown User';
-
-        return {
-          userId: referrer.referrerId,
-          userName,
-          referralCount: referrer._count.referrerId,
-          totalEarnings: Number(earnings._sum.referrerShare) || 0,
-        };
-      }),
-    );
-
-    const averageReferralsPerUser =
-      activeReferrers > 0 ? totalReferrals / activeReferrers : 0;
-
-    return {
-      totalReferrals,
-      activeReferrers,
-      totalReferralEarnings:
-        Number(totalReferralEarningsResult._sum.referrerShare) || 0,
-      averageReferralsPerUser: Math.round(averageReferralsPerUser * 10) / 10,
-      topReferrers: topReferrersWithDetails,
-    };
-  }
-
-  async validateReferralCode(code: string): Promise<{
-    valid: boolean;
-    referrer?: {
-      id: number;
-      firstName: string | null;
-      lastName: string | null;
-      profile: {
-        fullName: string | null;
-        verified: boolean;
-      } | null;
-    };
-    message?: string;
-  }> {
-    const profile = await this.prisma.profile.findUnique({
-      where: { referralCode: code },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
-
-    if (!profile) {
+    if (referredUserIds.length === 0) {
       return {
-        valid: false,
-        message: 'Referral code not found',
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        },
+        stats: {
+          totalReferrals: 0,
+          activeReferrals: 0,
+          totalOrders: 0,
+          totalCommission: 0,
+        },
       };
     }
 
-    return {
-      valid: true,
-      referrer: {
-        id: profile.user.id,
-        firstName: profile.user.firstName,
-        lastName: profile.user.lastName,
+    // Build where clause
+    const where: Prisma.UserWhereInput = {
+      id: { in: referredUserIds },
+    };
+
+    // Search filter
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Date range filter
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        where.createdAt.lte = new Date(dateTo);
+      }
+    }
+
+    // Get users with aggregated data
+    const users = await this.prisma.user.findMany({
+      where,
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        createdAt: true,
         profile: {
-          fullName: profile.fullName,
-          verified: profile.verified,
+          select: {
+            whatsappNumber: true,
+            referralCode: true,
+            verified: true,
+          },
+        },
+        orderRequests: {
+          select: {
+            id: true,
+            decidedPrice: true,
+            status: true,
+          },
+        },
+        settlements: {
+          where: {
+            settlementType: SettlementType.REFERRAL_PAYMENT,
+            orderSettlement: {
+              referrerId: userId,
+            },
+          },
+          select: {
+            amount: true,
+          },
         },
       },
+    });
+
+    // Transform and calculate stats
+    const data = users.map((user) => {
+      const totalOrders = user.orderRequests.length;
+      const totalOrderValue = user.orderRequests.reduce(
+        (sum, order) => sum + Number(order.decidedPrice),
+        0,
+      );
+      const commissionEarned = user.settlements.reduce(
+        (sum, settlement) => sum + Number(settlement.amount),
+        0,
+      );
+      const isActive = totalOrders > 0;
+
+      return {
+        id: user.id,
+        name:
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        email: user.email,
+        phone: user.profile?.whatsappNumber || null,
+        joinDate: user.createdAt.toISOString(),
+        totalOrders,
+        totalOrderValue,
+        commissionEarned,
+        status: isActive ? 'ACTIVE' : 'INACTIVE',
+        referralCode: user.profile?.referralCode || '',
+        verified: user.profile?.verified || false,
+      };
+    });
+
+    // Filter by status if provided
+    let filteredData = data;
+    if (status) {
+      filteredData = data.filter((item) => item.status === status.toString());
+    }
+
+    // Sort data
+    if (sortBy === ReferralSortBy.COMMISSION) {
+      filteredData.sort((a, b) => b.commissionEarned - a.commissionEarned);
+    } else if (sortBy === ReferralSortBy.ORDERS) {
+      filteredData.sort((a, b) => b.totalOrders - a.totalOrders);
+    } else if (sortBy === ReferralSortBy.DATE) {
+      filteredData.sort(
+        (a, b) =>
+          new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime(),
+      );
+    }
+
+    // Calculate total count
+    const total = await this.prisma.user.count({ where });
+
+    // Calculate stats
+    const stats = {
+      totalReferrals: data.length,
+      activeReferrals: data.filter((item) => item.status === 'ACTIVE').length,
+      totalOrders: data.reduce((sum, item) => sum + item.totalOrders, 0),
+      totalCommission: data.reduce(
+        (sum, item) => sum + item.commissionEarned,
+        0,
+      ),
+    };
+
+    return {
+      data: filteredData,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      stats,
     };
   }
 
-  async getReferralById(id: number): Promise<ReferralWithDetails> {
-    const referral = await this.prisma.referral.findUnique({
-      where: { id },
-      include: {
-        referrer: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profile: {
-              select: {
-                fullName: true,
-                referralCode: true,
-                verified: true,
-              },
-            },
-          },
-        },
-        referee: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            profile: {
-              select: {
-                fullName: true,
-                verified: true,
-              },
-            },
-          },
-        },
+  async findOne(userId: number, referralId: number) {
+    // Verify that the referral belongs to the current user
+    const referral = await this.prisma.referral.findFirst({
+      where: {
+        referrerId: userId,
+        refereeId: referralId,
       },
     });
 
@@ -507,6 +195,111 @@ export class ReferralsService {
       throw new NotFoundException('Referral not found');
     }
 
-    return referral;
+    // Get user details
+    const user = await this.prisma.user.findUnique({
+      where: { id: referralId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        createdAt: true,
+        profile: {
+          select: {
+            whatsappNumber: true,
+            referralCode: true,
+            fullName: true,
+            bankAccount: true,
+            accountNumber: true,
+            bankName: true,
+            verified: true,
+          },
+        },
+        orderRequests: {
+          select: {
+            id: true,
+            decidedPrice: true,
+            status: true,
+            createdAt: true,
+            orderSettlements: {
+              where: {
+                referrerId: userId,
+              },
+              select: {
+                settlements: {
+                  where: {
+                    userId: userId,
+                    settlementType: SettlementType.REFERRAL_PAYMENT,
+                  },
+                  select: {
+                    amount: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Calculate stats
+    const totalOrders = user.orderRequests.length;
+    const completedOrders = user.orderRequests.filter(
+      (order) => order.status === 'DELIVERED',
+    ).length;
+    const totalOrderValue = user.orderRequests.reduce(
+      (sum, order) => sum + Number(order.decidedPrice),
+      0,
+    );
+
+    // Calculate total commission
+    let totalCommission = 0;
+    const orders = user.orderRequests.map((order) => {
+      const commission =
+        order.orderSettlements[0]?.settlements.reduce(
+          (sum, settlement) => sum + Number(settlement.amount),
+          0,
+        ) || 0;
+      totalCommission += commission;
+
+      return {
+        id: `ORD-${order.id}`,
+        orderDate: order.createdAt.toISOString(),
+        amount: Number(order.decidedPrice),
+        status: order.status,
+        commission,
+      };
+    });
+
+    return {
+      id: user.id,
+      name:
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+      email: user.email,
+      phone: user.profile?.whatsappNumber || null,
+      joinDate: user.createdAt.toISOString(),
+      totalOrders,
+      completedOrders,
+      totalOrderValue,
+      totalSalesValue: totalOrderValue,
+      commissionEarned: totalCommission,
+      totalCommission,
+      status: totalOrders > 0 ? 'ACTIVE' : 'INACTIVE',
+      referralCode: user.profile?.referralCode || '',
+      orders,
+      // Profile fields
+      fullName: user.profile?.fullName || null,
+      bankAccount: user.profile?.bankAccount || null,
+      accountNumber: user.profile?.accountNumber || null,
+      bankName: user.profile?.bankName || null,
+      verified: user.profile?.verified || false,
+    };
   }
 }

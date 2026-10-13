@@ -6,13 +6,13 @@ import { Logger } from 'nestjs-pino';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import * as compression from 'compression';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 
 import { AppModule } from './app.module';
-// import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-// import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.enableShutdownHooks();
 
   // Use Pino logger
   app.useLogger(app.get(Logger));
@@ -22,14 +22,30 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
+  // Configure body parser with increased size limits for file uploads
+  const requestSizeLimit = '20mb';
+  app.use(json({ limit: requestSizeLimit }));
+  app.use(urlencoded({ limit: requestSizeLimit, extended: true }));
+
   // Security & Performance
   app.use(helmet());
   app.use(compression());
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_URL') || '*',
+    origin: configService.get('NODE_ENV') === 'production'
+      ? [configService.getOrThrow<string>('FRONTEND_URL')]
+      : [
+      configService.get<string>('FRONTEND_URL') || 'http://localhost:3000',
+      'http://localhost:3002',
+      'https://sellerpotal-elsl.onrender.com', // Production frontend
+      'https://sellers-potal.vercel.app', // Vercel deployment
+      /\.vercel\.app$/, // Allow all Vercel preview deployments
+      'null', // Allow file:// protocol for testing
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 3600, // Cache preflight requests for 1 hour
   });
 
   // Global pipes and filters
@@ -59,7 +75,7 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT') || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   const logger = app.get(Logger);
   logger.log(`🚀 Application is running on: http://localhost:${port}`);

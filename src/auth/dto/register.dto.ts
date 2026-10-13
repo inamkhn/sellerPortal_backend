@@ -5,6 +5,7 @@ import {
   Matches,
   IsOptional,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -13,6 +14,7 @@ export class RegisterDto {
     example: 'user@example.com',
     format: 'email',
   })
+  @Transform(({ value }) => value?.toLowerCase().trim())
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
 
@@ -47,4 +49,13 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @ApiProperty({
+    description: 'Referral code from existing user (required)',
+    example: 'ADMIN001',
+    required: true,
+  })
+  @IsString({ message: 'Referral code is required' })
+  @MinLength(3, { message: 'Referral code must be at least 3 characters' })
+  referralCode: string;
 }

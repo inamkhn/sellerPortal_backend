@@ -2,7 +2,7 @@ import {
   Controller,
   Get,
   Post,
-  Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -60,6 +60,8 @@ export class ProfileController {
         whatsappNumber: '+923001234567',
         bankAccount: 'EASYPAISA',
         accountNumber: '03001234567',
+        bankName: null,
+        accountTitle: null,
         facebookLink: 'https://facebook.com/johndoe',
         dubizzleLink: 'https://dubizzle.com/users/johndoe',
         verified: false,
@@ -121,7 +123,8 @@ export class ProfileController {
   @Get()
   @ApiOperation({
     summary: 'Get user profile',
-    description: 'Retrieves the profile of the authenticated user',
+    description:
+      'Retrieves the profile of the authenticated user with referral information',
   })
   @ApiOkResponse({
     description: 'Profile retrieved successfully',
@@ -134,6 +137,8 @@ export class ProfileController {
         whatsappNumber: '+923001234567',
         bankAccount: 'EASYPAISA',
         accountNumber: '03001234567',
+        bankName: null,
+        accountTitle: null,
         facebookLink: 'https://facebook.com/johndoe',
         dubizzleLink: 'https://dubizzle.com/users/johndoe',
         verified: false,
@@ -149,6 +154,23 @@ export class ProfileController {
           lastName: 'Doe',
           role: 'USER',
           isVerified: true,
+          referredUsers: [
+            {
+              id: 2,
+              userId: 2,
+              fullName: 'Jane Smith',
+              referralCode: 'XYZ98765',
+              verified: false,
+              createdAt: '2024-02-01T00:00:00.000Z',
+              user: {
+                id: 2,
+                email: 'jane@example.com',
+                firstName: 'Jane',
+                lastName: 'Smith',
+                createdAt: '2024-02-01T00:00:00.000Z',
+              },
+            },
+          ],
         },
         referrer: null,
       },
@@ -174,14 +196,15 @@ export class ProfileController {
       },
     },
   })
-  async getProfile(@GetUser() user: User): Promise<Profile | null> {
+  async getProfile(@GetUser() user: User): Promise<any> {
     return this.profileService.getProfile(user.id);
   }
 
-  @Put()
+  @Patch()
   @ApiOperation({
     summary: 'Update user profile',
-    description: 'Updates the profile of the authenticated user',
+    description:
+      'Partially updates the profile of the authenticated user. Only provided fields will be updated.',
   })
   @ApiOkResponse({
     description: 'Profile updated successfully',
@@ -194,6 +217,8 @@ export class ProfileController {
         whatsappNumber: '+923009876543',
         bankAccount: 'JAZZCASH',
         accountNumber: '03009876543',
+        bankName: 'Meezan Bank',
+        accountTitle: 'John Doe',
         facebookLink: 'https://facebook.com/johndoe.updated',
         dubizzleLink: 'https://dubizzle.com/users/johndoe.updated',
         verified: true,
@@ -244,8 +269,8 @@ export class ProfileController {
       example: {
         statusCode: 400,
         message: [
-          'WhatsApp number must be in international format',
-          'Please provide a valid Facebook profile URL',
+          'Full name must be between 2 and 100 characters',
+          'Address must be between 5 and 500 characters',
           'Referrer user not found',
           'Cannot refer yourself',
           'Each listed product must be a string',
@@ -318,36 +343,7 @@ export class ProfileController {
     return this.profileService.deleteProfile(user.id);
   }
 
-  @Get('generate-referral-code')
-  @ApiOperation({
-    summary: 'Generate unique referral code',
-    description: 'Generates a unique 8-character referral code',
-  })
-  @ApiOkResponse({
-    description: 'Referral code generated successfully',
-    schema: {
-      example: {
-        referralCode: 'XYZ98765',
-      },
-    },
-  })
-  @ApiUnauthorizedResponse({
-    description: 'Invalid or missing access token',
-    schema: {
-      example: {
-        statusCode: 401,
-        message: 'Unauthorized',
-        error: 'Unauthorized',
-      },
-    },
-  })
-  async generateReferralCode(): Promise<{ referralCode: string }> {
-    const referralCode = await this.profileService.generateUniqueReferralCode();
-    return { referralCode };
-  }
-
   // Product Management Endpoints
-
   @Post('products/:productId')
   @ApiOperation({
     summary: 'Add product to profile listed products',
@@ -371,6 +367,8 @@ export class ProfileController {
         whatsappNumber: '+923001234567',
         bankAccount: 'EASYPAISA',
         accountNumber: '03001234567',
+        bankName: null,
+        accountTitle: null,
         facebookLink: 'https://facebook.com/johndoe',
         dubizzleLink: 'https://dubizzle.com/users/johndoe',
         verified: false,
@@ -460,6 +458,8 @@ export class ProfileController {
         whatsappNumber: '+923001234567',
         bankAccount: 'EASYPAISA',
         accountNumber: '03001234567',
+        bankName: null,
+        accountTitle: null,
         facebookLink: 'https://facebook.com/johndoe',
         dubizzleLink: 'https://dubizzle.com/users/johndoe',
         verified: false,
@@ -524,7 +524,6 @@ export class ProfileController {
           category: 'SOFAS',
           condition: 'LIKE_NEW',
           sku: 'SOFA-001',
-          facebookPostingStatus: 'NOT_POSTED',
           createdAt: '2025-10-03T18:14:02.524Z',
         },
       ],

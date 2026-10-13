@@ -1,4 +1,5 @@
 import { IsString, IsEmail, MinLength, Matches, Length } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ResetPasswordDto {
@@ -6,6 +7,7 @@ export class ResetPasswordDto {
     description: 'User email address',
     example: 'user@example.com',
   })
+  @Transform(({ value }) => value?.toLowerCase().trim())
   @IsEmail({}, { message: 'Please provide a valid email address' })
   email: string;
 

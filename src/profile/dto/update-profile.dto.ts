@@ -33,16 +33,12 @@ export class UpdateProfileDto {
   address?: string;
 
   @ApiProperty({
-    description: 'WhatsApp number with country code',
-    example: '+923009876543',
+    description: 'WhatsApp number',
+    example: '03009876543',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^\+[1-9]\d{1,14}$/, {
-    message:
-      'WhatsApp number must be in international format (e.g., +923001234567)',
-  })
   whatsappNumber?: string;
 
   @ApiProperty({
@@ -68,27 +64,45 @@ export class UpdateProfileDto {
   accountNumber?: string;
 
   @ApiProperty({
-    description: 'Facebook profile link',
+    description: 'Bank name',
+    example: 'Meezan Bank',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  // @Length(2, 100, {
+  //   message: 'Bank name must be between 2 and 100 characters',
+  // })
+  bankName?: string;
+
+  @ApiProperty({
+    description: 'Account holder name',
+    example: 'John Doe',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 100, {
+    message: 'Account title must be between 2 and 100 characters',
+  })
+  accountTitle?: string;
+
+  @ApiProperty({
+    description: 'Facebook profile link (optional, can be empty)',
     example: 'https://facebook.com/johndoe.updated',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Facebook profile URL',
-  })
   facebookLink?: string;
 
   @ApiProperty({
-    description: 'Dubizzle profile link',
+    description: 'Dubizzle profile link (optional, can be empty)',
     example: 'https://dubizzle.com/users/johndoe.updated',
     required: false,
   })
   @IsOptional()
   @IsString()
-  @Matches(/^https?:\/\/(www\.)?dubizzle\.com\/users\/[a-zA-Z0-9.]+$/, {
-    message: 'Please provide a valid Dubizzle profile URL',
-  })
   dubizzleLink?: string;
 
   @ApiProperty({

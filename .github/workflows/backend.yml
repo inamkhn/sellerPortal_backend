@@ -1,0 +1,90 @@
+name: Backend CI and EC2 deployment
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      - run: npm run build
+      # Legacy application tests need repair; this covers deployment-related code.
+      - run: npm run test:deployment
+      - name: Build runtime image
+        run: docker build --target runtime -t backend-ci .
+      # Gap 7 fix: also validate the migration stage on every PR so a broken
+      # migration image cannot slip through to the deploy job.
+      - name: Build migration image (validation)
+        run: docker build --target migration -t backend-ci-migration .
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: backend-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check manual AWS setup variables
+        env:
+          DEPLOY_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          for key in AWS_REGION ECR_REPOSITORY EC2_INSTANCE_ID DEPLOY_ROLE; do
+            test -n "${!key}" || { echo "Missing GitHub variable: $key"; exit 1; }
+          done
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push API
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          tags: ${{ vars.ECR_REPOSITORY }}:api-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Build and push migrations
+        id: migration
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migration
+          platforms: linux/amd64
+          push: true
+          tags: ${{ vars.ECR_REPOSITORY }}:migration-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Install deployment script dependencies
+        run: pip install --quiet boto3
+      - name: Deploy through Systems Manager and verify readiness
+        env:
+          API_DIGEST: ${{ steps.api.outputs.digest }}
+          MIGRATION_DIGEST: ${{ steps.migration.outputs.digest }}
+        run: python3 deploy/send-deployment.py

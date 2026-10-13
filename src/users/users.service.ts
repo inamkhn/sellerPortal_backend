@@ -1,206 +1,195 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
-  ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/database.service';
-import { User, Role, Prisma, BankAccount } from '@prisma/client';
-
-export interface UserWithDetails {
-  id: number;
-  email: string;
-  firstName: string | null;
-  lastName: string | null;
-  avatar: string | null;
-  role: Role;
-  isVerified: boolean;
-  googleId: string | null;
-  lastLogin: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  profile?: {
-    id: number;
-    fullName: string | null;
-    address: string | null;
-    whatsappNumber: string | null;
-    bankAccount: string | null;
-    accountNumber: string | null;
-    facebookLink: string | null;
-    dubizzleLink: string | null;
-    verified: boolean;
-    referralCode: string;
-    referredBy: number | null;
-  } | null;
-  _count?: {
-    products: number;
-    orderRequests: number;
-    payments: number;
-    referralsMade: number;
-    referralsReceived: number;
-  };
-}
-
-export interface PaginatedUsers {
-  users: UserWithDetails[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-export interface UserQueryParams {
-  page: number;
-  limit: number;
-  search?: string;
-  role?: Role;
-  isVerified?: boolean;
-  sortBy: string;
-  sortOrder: 'asc' | 'desc';
-}
-
-export interface UserStats {
-  totalUsers: number;
-  activeUsers: number;
-  newUsersLast30Days: number;
-  verifiedUsers: number;
-  unverifiedUsers: number;
-  usersByRole: Record<string, number>;
-  usersWithOrders: number;
-  usersWithProducts: number;
-  googleAuthUsers: number;
-  recentActivity: {
-    last7Days: number;
-    last30Days: number;
-  };
-}
+import { Prisma } from '@prisma/client';
+import {
+  GetUsersQueryDto,
+  UserListResponseDto,
+  UpdateUserDto,
+  UpdateRoleDto,
+} from './dto';
+import { UserDetailResponse, ReferralWithStats } from './interfaces';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getAllUsers(params: UserQueryParams): Promise<PaginatedUsers> {
-    const { page, limit, search, role, isVerified, sortBy, sortOrder } = params;
-    const skip = (page - 1) * limit;
+  /**
+   * Get paginated list of users with filtering and statistics
+   */
+  async getUsers(query: GetUsersQueryDto): Promise<UserListResponseDto> {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      role,
+      isVerified,
+      dateFrom,
+      dateTo,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
 
     // Build where clause
-    const where: Prisma.UserWhereInput = {};
+    const where: Prisma.UserWhereInput = {
+      ...(role && { role }),
+      ...(isVerified !== undefined && { isVerified }),
+      ...(dateFrom &&
+        dateTo && {
+          createdAt: {
+            gte: new Date(dateFrom),
+            lte: new Date(dateTo),
+          },
+        }),
+      ...(search && {
+        OR: [
+          { email: { contains: search, mode: 'insensitive' } },
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          {
+            profile: {
+              fullName: { contains: search, mode: 'insensitive' },
+            },
+          },
+        ],
+      }),
+    };
 
-    if (search) {
-      where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    if (role) {
-      where.role = role;
-    }
-
-    if (isVerified !== undefined) {
-      where.isVerified = isVerified;
-    }
-
-    // Build order by clause
-    const orderBy: Prisma.UserOrderByWithRelationInput = {};
-    orderBy[sortBy] = sortOrder;
-
-    const [users, total] = await Promise.all([
+    // Fetch users, total count, and role counts in parallel
+    const [
+      users,
+      total,
+      usersCount,
+      referralManagersCount,
+      adminsCount,
+      pendingCount,
+    ] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        skip,
-        take: limit,
-        orderBy,
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          avatar: true,
-          role: true,
-          isVerified: true,
-          googleId: true,
-          lastLogin: true,
-          createdAt: true,
-          updatedAt: true,
+        include: {
           profile: {
             select: {
-              id: true,
               fullName: true,
-              address: true,
               whatsappNumber: true,
-              bankAccount: true,
-              accountNumber: true,
-              facebookLink: true,
-              dubizzleLink: true,
-              verified: true,
               referralCode: true,
-              referredBy: true,
+              verified: true,
             },
           },
           _count: {
             select: {
-              products: true,
               orderRequests: true,
-              payments: true,
-              referralsMade: true,
-              referralsReceived: true,
             },
           },
         },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
       }),
       this.prisma.user.count({ where }),
+      // Count users with role USER
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'USER',
+        },
+      }),
+      // Count users with role REFERRAL_MANAGER
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'REFERRAL_MANAGER',
+        },
+      }),
+      // Count users with role ADMIN
+      this.prisma.user.count({
+        where: {
+          ...where,
+          role: 'ADMIN',
+        },
+      }),
+      // Count pending (unverified) users
+      this.prisma.user.count({
+        where: {
+          ...where,
+          isVerified: false,
+        },
+      }),
     ]);
 
-    const totalPages = Math.ceil(total / limit);
+    // Calculate revenue for each user
+    const usersWithStats = await Promise.all(
+      users.map(async (user) => {
+        const revenue = await this.prisma.orderRequest.aggregate({
+          where: {
+            userId: user.id,
+            status: 'DELIVERED',
+          },
+          _sum: {
+            decidedPrice: true,
+          },
+        });
+
+        return {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          fullName: user.profile?.fullName || null,
+          avatar: user.avatar,
+          role: user.role,
+          isVerified: user.isVerified,
+          whatsappNumber: user.profile?.whatsappNumber || null,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+          totalOrders: user._count.orderRequests,
+          totalRevenue: revenue._sum.decidedPrice?.toNumber() || 0,
+          profile: user.profile
+            ? {
+                verified: user.profile.verified,
+                fullName: user.profile.fullName,
+                whatsappNumber: user.profile.whatsappNumber,
+              }
+            : null,
+        };
+      }),
+    );
 
     return {
-      users,
+      users: usersWithStats,
       total,
       page,
       limit,
-      totalPages,
+      totalPages: Math.ceil(total / limit),
+      roleCounts: {
+        all: total,
+        users: usersCount,
+        referralManagers: referralManagersCount,
+        admins: adminsCount,
+        pending: pendingCount,
+      },
     };
   }
 
-  async getUserById(id: number): Promise<UserWithDetails> {
+  /**
+   * Get detailed user information with statistics
+   */
+  async getUserDetail(userId: number): Promise<UserDetailResponse> {
     const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        avatar: true,
-        role: true,
-        isVerified: true,
-        googleId: true,
-        lastLogin: true,
-        createdAt: true,
-        updatedAt: true,
+      where: { id: userId },
+      include: {
         profile: {
-          select: {
-            id: true,
-            fullName: true,
-            address: true,
-            whatsappNumber: true,
-            bankAccount: true,
-            accountNumber: true,
-            facebookLink: true,
-            dubizzleLink: true,
-            verified: true,
-            referralCode: true,
-            referredBy: true,
-          },
-        },
-        _count: {
-          select: {
-            products: true,
-            orderRequests: true,
-            payments: true,
-            referralsMade: true,
-            referralsReceived: true,
+          include: {
+            referrer: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },
@@ -210,312 +199,507 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    // Get order statistics
+    const [totalOrders, deliveredOrders, orderRevenue, pendingOrders] =
+      await Promise.all([
+        this.prisma.orderRequest.count({ where: { userId } }),
+        this.prisma.orderRequest.count({
+          where: { userId, status: 'DELIVERED' },
+        }),
+        this.prisma.orderRequest.aggregate({
+          where: { userId, status: 'DELIVERED' },
+          _sum: { decidedPrice: true },
+        }),
+        this.prisma.orderRequest.count({
+          where: {
+            userId,
+            status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
+          },
+        }),
+      ]);
+
+    const statistics = {
+      totalOrders,
+      totalRevenue: orderRevenue._sum.decidedPrice?.toNumber() || 0,
+      successRate: totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0,
+      pendingOrders,
+      deliveredOrders,
+    };
+
+    // Get referral info if user is REFERRAL_MANAGER
+    let referralInfo;
+    if (user.role === 'REFERRAL_MANAGER') {
+      const [totalReferrals, referralEarnings] = await Promise.all([
+        this.prisma.referral.count({ where: { referrerId: userId } }),
+        this.prisma.settlement.aggregate({
+          where: {
+            userId,
+            settlementType: 'REFERRAL_PAYMENT',
+            status: 'PAID',
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      referralInfo = {
+        referralCode: user.profile?.referralCode || '',
+        totalReferrals,
+        referralEarnings: referralEarnings._sum.amount?.toNumber() || 0,
+      };
+    }
+
+    return {
+      ...user,
+      statistics,
+      referralInfo,
+    };
   }
 
-  async updateUser(
-    id: number,
-    updateData: {
-      firstName?: string;
-      lastName?: string;
-      role?: Role;
-      isVerified?: boolean;
-      avatar?: string;
-    },
-  ): Promise<User> {
+  /**
+   * Get user orders with pagination
+   */
+  async getUserOrders(userId: number, page = 1, limit = 20) {
+    const [orders, total] = await Promise.all([
+      this.prisma.orderRequest.findMany({
+        where: { userId },
+        include: {
+          product: {
+            select: {
+              id: true,
+              title: true,
+              price: true,
+              photos: true,
+              condition: true,
+            },
+          },
+          customProducts: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              images: true,
+              category: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.orderRequest.count({ where: { userId } }),
+    ]);
+
+    return {
+      orders,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get user settlements with pagination
+   */
+  async getUserSettlements(userId: number, page = 1, limit = 20) {
+    const [settlements, total] = await Promise.all([
+      this.prisma.settlement.findMany({
+        where: { userId },
+        include: {
+          orderSettlement: {
+            include: {
+              orderRequest: {
+                select: {
+                  id: true,
+                  customerName: true,
+                  decidedPrice: true,
+                },
+              },
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.settlement.count({ where: { userId } }),
+    ]);
+
+    return {
+      settlements,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get user referrals with statistics
+   */
+  async getUserReferrals(userId: number): Promise<ReferralWithStats[]> {
+    const referrals = await this.prisma.referral.findMany({
+      where: { referrerId: userId },
+      include: {
+        referee: {
+          include: {
+            profile: {
+              select: {
+                fullName: true,
+              },
+            },
+            _count: {
+              select: {
+                orderRequests: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Calculate revenue for each referral
+    const referralsWithStats = await Promise.all(
+      referrals.map(async (referral) => {
+        const revenue = await this.prisma.orderRequest.aggregate({
+          where: {
+            userId: referral.refereeId,
+            status: 'DELIVERED',
+          },
+          _sum: {
+            decidedPrice: true,
+          },
+        });
+
+        return {
+          id: referral.id,
+          referredUserId: referral.refereeId,
+          referredUserName:
+            referral.referee.profile?.fullName ||
+            `${referral.referee.firstName || ''} ${referral.referee.lastName || ''}`.trim() ||
+            referral.referee.email,
+          referredUserEmail: referral.referee.email,
+          registrationDate: referral.createdAt,
+          orderCount: referral.referee._count.orderRequests,
+          totalRevenue: revenue._sum.decidedPrice?.toNumber() || 0,
+        };
+      }),
+    );
+
+    return referralsWithStats;
+  }
+
+  /**
+   * Update user information
+   */
+  async updateUser(userId: number, updateUserDto: UpdateUserDto) {
+    // Check if user exists
     const existingUser = await this.prisma.user.findUnique({
-      where: { id },
+      where: { id: userId },
     });
 
     if (!existingUser) {
       throw new NotFoundException('User not found');
     }
 
+    // Check if email already exists (if email is being updated)
+    if (updateUserDto.email && updateUserDto.email !== existingUser.email) {
+      const emailExists = await this.prisma.user.findUnique({
+        where: { email: updateUserDto.email },
+      });
+
+      if (emailExists) {
+        throw new ConflictException('Email already in use');
+      }
+    }
+
+    // Update user
     const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: updateData,
+      where: { id: userId },
+      data: updateUserDto,
+      include: {
+        profile: true,
+      },
     });
 
     return updatedUser;
   }
 
-  async suspendUser(id: number): Promise<{
-    id: number;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    role: Role;
-    isVerified: boolean;
-    message: string;
-  }> {
+  /**
+   * Update user role and profile verification status
+   */
+  async updateUserRole(userId: number, updateRoleDto: UpdateRoleDto) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
-      },
+      where: { id: userId },
+      include: { profile: true },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    if (user.role === Role.ADMIN) {
-      throw new BadRequestException('Cannot suspend admin users');
+    // If only updating verification status (no role change)
+    if (!updateRoleDto.role && updateRoleDto.verified !== undefined) {
+      // Update profile verification only
+      if (user.profile) {
+        await this.prisma.profile.update({
+          where: { userId },
+          data: {
+            verified: updateRoleDto.verified,
+          },
+        });
+      } else {
+        // Create profile if it doesn't exist
+        await this.prisma.profile.create({
+          data: {
+            userId,
+            referralCode: await this.generateUniqueReferralCode(),
+            verified: updateRoleDto.verified,
+          },
+        });
+      }
+
+      // Return updated user
+      return await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { profile: true },
+      });
     }
 
-    if (!user.isVerified) {
-      throw new BadRequestException('User is already suspended');
+    // Determine verification status when role is being updated
+    // If verified is explicitly provided, use it
+    // Otherwise, auto-verify when promoting to REFERRAL_MANAGER
+    const shouldVerify =
+      updateRoleDto.verified !== undefined
+        ? updateRoleDto.verified
+        : updateRoleDto.role === 'REFERRAL_MANAGER';
+
+    // Handle profile updates
+    if (
+      updateRoleDto.role === 'REFERRAL_MANAGER' ||
+      updateRoleDto.verified !== undefined
+    ) {
+      // Generate unique referral code if doesn't exist
+      const referralCode =
+        user.profile?.referralCode || (await this.generateUniqueReferralCode());
+
+      // Update or create profile
+      if (user.profile) {
+        await this.prisma.profile.update({
+          where: { userId },
+          data: {
+            referralCode,
+            verified: shouldVerify,
+          },
+        });
+      } else {
+        await this.prisma.profile.create({
+          data: {
+            userId,
+            referralCode,
+            verified: shouldVerify,
+          },
+        });
+      }
     }
 
+    // Update user role and verification status
     const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: { isVerified: false },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
+      where: { id: userId },
+      data: {
+        role: updateRoleDto.role || user.role, // Keep existing role if not provided
+        isVerified: shouldVerify ? true : user.isVerified,
+      },
+      include: {
+        profile: true,
       },
     });
 
-    return {
-      ...updatedUser,
-      message: 'User has been suspended',
-    };
+    return updatedUser;
   }
 
-  async activateUser(id: number): Promise<{
-    id: number;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    role: Role;
-    isVerified: boolean;
-    message: string;
-  }> {
+  /**
+   * Delete user account
+   */
+  async deleteUser(userId: number) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
-      },
+      where: { id: userId },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    if (user.isVerified) {
-      throw new BadRequestException('User is already active');
-    }
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: { isVerified: true },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        isVerified: true,
-      },
-    });
-
-    return {
-      ...updatedUser,
-      message: 'User has been activated',
-    };
-  }
-
-  async deleteUser(id: number, currentUserId: number): Promise<void> {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: { id: true, role: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    if (user.id === currentUserId) {
-      throw new BadRequestException('You cannot delete your own account');
-    }
-
-    if (user.role === Role.ADMIN) {
-      throw new ForbiddenException('Cannot delete admin users');
-    }
-
+    // Delete user (cascades to related records)
     await this.prisma.user.delete({
-      where: { id },
+      where: { id: userId },
     });
-  }
 
-  getRoles(): { value: string; label: string }[] {
-    // Create a mapping of enum values to display labels
-    const roleLabels: Record<Role, string> = {
-      [Role.USER]: 'User',
-      [Role.ADMIN]: 'Admin',
-      [Role.REFERRAL_MANAGER]: 'Referral Manager',
+    return {
+      message: 'User deleted successfully',
+      userId,
     };
-
-    // Get all enum values and map them to the desired format
-    const roles = Object.values(Role).map((role) => ({
-      value: role,
-      label: roleLabels[role],
-    }));
-
-    return roles;
   }
 
-  getBankAccountTypes(): { value: string; label: string }[] {
-    // Create a mapping of enum values to display labels
-    const bankAccountLabels: Record<BankAccount, string> = {
-      [BankAccount.EASYPAISA]: 'EasyPaisa',
-      [BankAccount.JAZZCASH]: 'JazzCash',
-      [BankAccount.BANK_ACCOUNT]: 'Bank Account',
-      [BankAccount.OTHER]: 'Other',
-    };
+  /**
+   * Export users to CSV
+   */
+  async exportUsers(query: GetUsersQueryDto): Promise<string> {
+    const { search, role, isVerified, dateFrom, dateTo } = query;
 
-    // Get all enum values and map them to the desired format
-    const bankAccounts = Object.values(BankAccount).map((bankAccount) => ({
-      value: bankAccount,
-      label: bankAccountLabels[bankAccount],
-    }));
-
-    return bankAccounts;
-  }
-
-  async getUserStats(): Promise<UserStats> {
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const [
-      totalUsers,
-      verifiedUsers,
-      unverifiedUsers,
-      newUsersLast30Days,
-      newUsersLast7Days,
-      usersByRole,
-      usersWithOrders,
-      usersWithProducts,
-      googleAuthUsers,
-      activeUsersWithRecentOrders,
-    ] = await Promise.all([
-      // Total users
-      this.prisma.user.count(),
-
-      // Verified users
-      this.prisma.user.count({
-        where: { isVerified: true },
-      }),
-
-      // Unverified users
-      this.prisma.user.count({
-        where: { isVerified: false },
-      }),
-
-      // New users in last 30 days
-      this.prisma.user.count({
-        where: {
+    // Build where clause (same as getUsers but without pagination)
+    const where: Prisma.UserWhereInput = {
+      ...(role && { role }),
+      ...(isVerified !== undefined && { isVerified }),
+      ...(dateFrom &&
+        dateTo && {
           createdAt: {
-            gte: thirtyDaysAgo,
+            gte: new Date(dateFrom),
+            lte: new Date(dateTo),
           },
-        },
-      }),
-
-      // New users in last 7 days
-      this.prisma.user.count({
-        where: {
-          createdAt: {
-            gte: sevenDaysAgo,
-          },
-        },
-      }),
-
-      // Users by role
-      this.prisma.user.groupBy({
-        by: ['role'],
-        _count: { role: true },
-      }),
-
-      // Users with orders
-      this.prisma.user.count({
-        where: {
-          orderRequests: {
-            some: {},
-          },
-        },
-      }),
-
-      // Users with products
-      this.prisma.user.count({
-        where: {
-          products: {
-            some: {},
-          },
-        },
-      }),
-
-      // Google auth users
-      this.prisma.user.count({
-        where: {
-          googleId: {
-            not: null,
-          },
-        },
-      }),
-
-      // Active users (users with order requests in the last month)
-      this.prisma.user.count({
-        where: {
-          orderRequests: {
-            some: {
-              createdAt: {
-                gte: oneMonthAgo,
-              },
+        }),
+      ...(search && {
+        OR: [
+          { email: { contains: search, mode: 'insensitive' } },
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          {
+            profile: {
+              fullName: { contains: search, mode: 'insensitive' },
             },
           },
-        },
+        ],
       }),
-    ]);
+    };
 
-    // Process users by role
-    const roleStats = usersByRole.reduce(
-      (acc, item) => {
-        acc[item.role] = item._count.role;
-        return acc;
+    // Fetch all users matching filters
+    const users = await this.prisma.user.findMany({
+      where,
+      include: {
+        profile: {
+          select: {
+            fullName: true,
+            whatsappNumber: true,
+          },
+        },
+        _count: {
+          select: {
+            orderRequests: true,
+          },
+        },
       },
-      {} as Record<string, number>,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Calculate revenue for each user
+    const usersWithStats = await Promise.all(
+      users.map(async (user) => {
+        const revenue = await this.prisma.orderRequest.aggregate({
+          where: {
+            userId: user.id,
+            status: 'DELIVERED',
+          },
+          _sum: {
+            decidedPrice: true,
+          },
+        });
+
+        return {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          fullName: user.profile?.fullName || '',
+          role: user.role,
+          isVerified: user.isVerified,
+          whatsappNumber: user.profile?.whatsappNumber || '',
+          createdAt: this.formatDate(user.createdAt),
+          lastLogin: user.lastLogin ? this.formatDate(user.lastLogin) : '',
+          totalOrders: user._count.orderRequests,
+          totalRevenue: (revenue._sum.decidedPrice?.toNumber() || 0).toFixed(2),
+        };
+      }),
     );
 
-    return {
-      totalUsers,
-      activeUsers: activeUsersWithRecentOrders,
-      newUsersLast30Days,
-      verifiedUsers,
-      unverifiedUsers,
-      usersByRole: roleStats,
-      usersWithOrders,
-      usersWithProducts,
-      googleAuthUsers,
-      recentActivity: {
-        last7Days: newUsersLast7Days,
-        last30Days: newUsersLast30Days,
-      },
-    };
+    // Generate CSV
+    const headers = [
+      'ID',
+      'Email',
+      'First Name',
+      'Last Name',
+      'Full Name',
+      'Role',
+      'Verified',
+      'WhatsApp',
+      'Created At',
+      'Last Login',
+      'Total Orders',
+      'Total Revenue',
+    ];
+
+    const csvRows = [
+      headers.join(','),
+      ...usersWithStats.map((user) =>
+        [
+          user.id,
+          `"${user.email}"`,
+          `"${user.firstName}"`,
+          `"${user.lastName}"`,
+          `"${user.fullName}"`,
+          user.role,
+          user.isVerified,
+          `"${user.whatsappNumber}"`,
+          user.createdAt,
+          user.lastLogin,
+          user.totalOrders,
+          user.totalRevenue,
+        ].join(','),
+      ),
+    ];
+
+    return csvRows.join('\n');
+  }
+
+  /**
+   * Generate unique referral code
+   */
+  private async generateUniqueReferralCode(): Promise<string> {
+    let referralCode = '';
+    let isUnique = false;
+
+    while (!isUnique) {
+      // Generate random 8-character code
+      referralCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+      // Check if code already exists
+      const existing = await this.prisma.profile.findUnique({
+        where: { referralCode },
+      });
+
+      if (!existing) {
+        isUnique = true;
+      }
+    }
+
+    return referralCode;
+  }
+
+  /**
+   * Format date as YYYY-MM-DD HH:mm:ss
+   */
+  private formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 }

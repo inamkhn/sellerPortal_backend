@@ -1,0 +1,3 @@
+-- This migration was already applied to the database
+-- Adding placeholder to resolve migration history mismatch
+-- No changes needed as this was applied directly to the database

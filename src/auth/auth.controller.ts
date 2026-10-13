@@ -20,12 +20,14 @@ import {
   ApiConflictResponse,
   ApiOkResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
   LoginDto,
   ResetPasswordDto,
   ForgotPasswordDto,
+  VerifyEmailDto,
 } from './dto';
 import { AuthResponse } from './interfaces/auth-response.interface';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -46,7 +48,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register a new user',
     description:
-      'Creates a new user account with email and password. Sends email verification OTP.',
+      'Creates a new user account with email and password. Requires a valid referral code. Sends email verification OTP.',
   })
   @ApiResponse({
     status: 201,
@@ -74,6 +76,14 @@ export class AuthController {
             },
           },
         },
+        referralInfo: {
+          type: 'object',
+          properties: {
+            wasReferred: { type: 'boolean', example: true },
+            referrerName: { type: 'string', example: 'Admin User' },
+            userReferralCode: { type: 'string', example: 'ABC12345' },
+          },
+        },
       },
     },
   })
@@ -88,13 +98,18 @@ export class AuthController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'Invalid input data',
+    description: 'Invalid input data or referral code',
     schema: {
       example: {
         statusCode: 400,
         message: [
           'Please provide a valid email address',
           'Password must be at least 8 characters long',
+          'Referral code is required',
+          'Referral code must be at least 3 characters',
+          'Invalid referral code. Please check the code and try again.',
+          'This referral code belongs to an unverified account and cannot be used.',
+          'This referral code is not yet activated. The profile needs to be verified by an admin.',
         ],
         error: 'Bad Request',
       },
@@ -200,6 +215,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // Only 3 resend attempts per minute
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -300,6 +316,41 @@ export class AuthController {
   }
 
   @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify email address',
+    description: 'Verifies user email address using 6-digit OTP sent via email',
+  })
+  @ApiOkResponse({
+    description: 'Email successfully verified',
+    schema: {
+      example: {
+        message: 'Email verified successfully',
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid or expired verification OTP',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: 'Invalid verification OTP',
+        error: 'Bad Request',
+      },
+    },
+  })
+  async verifyEmail(
+    @Body() VerifyEmailDto: VerifyEmailDto,
+  ): Promise<{ message: string }> {
+    await this.authService.verifyEmail(
+      VerifyEmailDto.email,
+      VerifyEmailDto.otp,
+    );
+    return { message: 'Email verified successfully' };
+  }
+
+  @Public()
   @Get('google')
   @UseGuards(GoogleAuthGuard)
   @ApiOperation({
@@ -362,6 +413,52 @@ export class AuthController {
   })
   async googleAuthRedirect(@Req() req: Request): Promise<AuthResponse> {
     return this.authService.registerWithGoogle(req.user as GoogleUser);
+  }
+
+  // /api/auth/me
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get current user',
+    description:
+      'Returns information about the authenticated user with profile',
+  })
+  @ApiOkResponse({
+    description: 'User information retrieved successfully',
+    schema: {
+      example: {
+        user: {
+          id: 1,
+          email: 'user@example.com',
+          firstName: 'John',
+          lastName: 'Doe',
+          role: 'ADMIN',
+          isVerified: true,
+          avatar: null,
+          profile: {
+            fullName: 'John Doe',
+            whatsappNumber: '+971501234567',
+            referralCode: 'ABC12345',
+            verified: true,
+          },
+        },
+      },
+    },
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or missing access token',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+        error: 'Unauthorized',
+      },
+    },
+  })
+  async getMe(@GetUser() user: User) {
+    return await this.authService.getMe(user.id);
   }
 
   // @UseGuards(JwtAuthGuard)
